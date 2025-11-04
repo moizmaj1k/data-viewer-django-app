@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}RAMS Dashboard{% endblock %}
+
+{% block head_extra %}
+  <!-- OpenLayers CSS + JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@7.5.2/ol.css" />
+  <script src="https://cdn.jsdelivr.net/npm/ol@7.5.2/dist/ol.js"></script>
+
+  <!-- Page CSS -->
+  <link rel="stylesheet" href="{% static 'main.css' %}">
+
+  <!-- Our dashboard JS at bottom (see content block) -->
+{% endblock %}
+
+{% block toolbar %}
+  <div class="toolbar-compact">
+    <!-- Basemap switcher (compact button group) -->
+    <div class="btn-group" role="group" aria-label="Basemap">
+      <button type="button" class="btn btn-outline active" data-basemap="google_sat" title="Google Satellite">G-Sat</button>
+      <button type="button" class="btn btn-outline" data-basemap="google_hybrid" title="Google Hybrid">G-Hy</button>
+      <button type="button" class="btn btn-outline" data-basemap="google_standard" title="Google Standard">G-St</button>
+      <button type="button" class="btn btn-outline" data-basemap="google_terrain" title="Google Terrain">G-Tr</button>
+      <button type="button" class="btn btn-outline" data-basemap="esri_world" title="Esri World">Esri</button>
+      <button type="button" class="btn btn-outline" data-basemap="osm" title="OpenStreetMap">OSM</button>
+    </div>
+
+    <!-- Divider -->
+    <span class="sep"></span>
+
+    <!-- Filters toggle -->
+    <button id="btn-filters" class="btn btn-solid" type="button" aria-expanded="false" title="Show/Hide Filters">
+      Filters
+    </button>
+  </div>
+{% endblock %}
+
+{% block content %}
+
+  <!-- Collapsible filters panel (hidden by default) -->
+  <section id="filters-panel" class="filters-panel" aria-hidden="true">
+    <form id="filters-form" class="filters-form" onsubmit="return false;">
+
+      <!-- District (label shows name, value is district code) -->
+      <label class="field">
+        <span>District</span>
+        <select id="filter-district">
+          <option value="">All</option>
+        </select>
+      </label>
+
+      <!-- Roads multi-select (search + checkboxes) -->
+      <div class="field">
+        <span>Roads</span>
+        <div class="multi-select" id="roads-select">
+          <button type="button" class="ms-trigger" aria-expanded="false">
+            <span class="ms-label">Select roads</span>
+            <span class="ms-count" hidden>(0)</span>
+          </button>
+          <div class="ms-panel" role="dialog" aria-hidden="true">
+            <div class="ms-search">
+              <input type="text" id="roads-search" placeholder="Search roads...">
+            </div>
+            <div class="ms-list" id="roads-list">
+              <!-- checkboxes injected here -->
+            </div>
+            <div class="ms-actions">
+              <button type="button" class="btn btn-outline" id="roads-select-all">Select All</button>
+              <button type="button" class="btn btn-outline" id="roads-clear-all">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Assets multi-select with modes -->
+      <div class="field">
+        <span>Assets</span>
+        <div class="multi-select" id="assets-select">
+          <button type="button" class="ms-trigger" aria-expanded="false">
+            <span class="ms-label">No assets</span>
+          </button>
+          <div class="ms-panel" role="dialog" aria-hidden="true">
+            <div class="ms-modes">
+              <label class="radio">
+                <input type="radio" name="asset_mode" value="none" checked>
+                <span>No assets</span>
+              </label>
+              <label class="radio">
+                <input type="radio" name="asset_mode" value="all">
+                <span>All assets</span>
+              </label>
+              <label class="radio">
+                <input type="radio" name="asset_mode" value="custom">
+                <span>Choose assets</span>
+              </label>
+            </div>
+
+            <div class="ms-list" id="assets-list" aria-disabled="true">
+              <!-- asset checkboxes injected here -->
+            </div>
+            <div class="ms-actions">
+              <button type="button" class="btn btn-outline" id="assets-select-all" disabled>Select All</button>
+              <button type="button" class="btn btn-outline" id="assets-clear-all" disabled>Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="filters-actions">
+        <button id="btn-apply" type="submit" class="btn btn-solid">Apply</button>
+        <button id="btn-reset" type="button" class="btn btn-outline">Reset Filters</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Map container -->
+  <div id="map"></div>
+
+  <!-- Right detail drawer -->
+  <aside id="detail-drawer" class="drawer" aria-hidden="true">
+    <header class="drawer-head">
+      <h3 id="drawer-title">Details</h3>
+      <button id="drawer-close" class="btn btn-outline" type="button" aria-label="Close">✕</button>
+    </header>
+    <div id="drawer-body" class="drawer-body">
+      <!-- Populated dynamically -->
+    </div>
+  </aside>
+
+
+  <!-- Dashboard logic -->
+  <script defer src="{% static 'dashboard.js' %}"></script>
+{% endblock %}
+
+

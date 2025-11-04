@@ -1,0 +1,255 @@
+:root {
+  --topbar-h: 60px;
+  --drawer-w: 420px;  
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; }
+
+.topbar {
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+  position: sticky;
+  top: 0; z-index: 10;
+}
+.brand { font-weight: 700; }
+.toolbar .filters { display: flex; gap: 10px; align-items: center; }
+.filters label { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.filters select, .filters button {
+  height: 34px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; background: white;
+}
+
+.page {
+  height: calc(100vh - var(--topbar-h));
+  display: flex; flex-direction: column;
+}
+#map {
+  flex: 1 1 auto;
+  width: 100%;
+}
+/* When the details drawer is open, give the map space on the right */
+body.drawer-open #map { width: calc(100% - 420px); transition: width 0.25s ease; }
+
+/* OL default tweaks */
+.ol-control button { background: white; border-radius: 4px; }
+
+
+/* Compact toolbar */
+.toolbar-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Small button group */
+.btn-group {
+  display: inline-flex;
+  border: 1px solid #cfd3d8;
+  border-radius: 10px;           /* was 999px */
+  overflow: hidden;
+}
+.btn-group .btn {
+  padding: 6px 8px;             /* a bit taller/wider */
+  font-size: 12px;
+  line-height: 1.1;
+  border: 0;
+  background: #fff;
+  border-radius: 0;              /* squared inside the group */
+}
+.btn-group .btn + .btn {
+  border-left: 1px solid #cfd3d8;
+}
+.btn-group .btn.active {
+  background: #eef1f5;
+  font-weight: 600;
+}
+.btn-group .btn:hover {
+  background: #f6f8fa;
+}
+
+/* Buttons */
+.btn { border-radius: 8px; }
+.btn-outline { border: 1px solid #cfd3d8; background: #fff; }
+.btn-outline:hover { background: #f6f8fa; }
+.btn-solid {
+  border: 1px solid #1d4ed8;
+  background: #1d4ed8; color: #fff;
+  padding: 8px 14px; font-size: 12px;
+}
+.btn-solid:hover { filter: brightness(0.95); }
+
+.sep {
+  width: 1px;
+  height: 20px;
+  background: #e5e7eb;
+  margin: 0 6px;
+}
+
+/* Layout: header is fixed height; main is column with filters + map */
+.topbar { min-height: 56px; }
+.page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+}
+
+/* Filters panel (collapsible with smooth animation) */
+.filters-panel {
+  overflow: hidden;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 260ms ease, opacity 240ms ease;
+}
+.filters-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.filters-panel.open {
+  max-height: 320px; /* enough to show form (adjust if needed) */
+  opacity: 1;
+  overflow: visible; 
+}
+
+.filters-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 10px 12px;
+}
+.field { display: grid; gap: 6px; }
+.field > span { font-size: 12px; color: #374151; }
+
+.filters-form select {
+  min-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid #cfd3d8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* Multi-select dropdown */
+.multi-select { position: relative; }
+.ms-trigger {
+  width: 100%;
+  border: 1px solid #cfd3d8;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer;
+}
+.ms-trigger[aria-expanded="true"] { background: #f6f8fa; }
+
+.ms-panel {
+  position: absolute; z-index: 20;
+  left: 0; right: 0; top: calc(100% + 6px);
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  padding: 8px;
+  display: none;
+}
+.ms-panel { z-index: 1000; }
+.ms-panel[aria-hidden="false"] { display: block; }
+
+.ms-search { padding: 4px 6px; }
+.ms-search input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cfd3d8;
+  border-radius: 8px;
+}
+
+.ms-list {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 6px;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  padding: 6px;
+}
+.ms-list[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+
+.ms-list .check {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+.ms-list .check:hover { background: #f9fafb; }
+
+.ms-actions, .ms-modes {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 6px 4px 6px;
+  flex-wrap: wrap;
+}
+.radio { display: inline-flex; align-items: center; gap: 6px; }
+.radio input { accent-color: #1d4ed8; }
+
+/* Map fills remaining space; adjusts automatically when filters-panel opens */
+#map {
+  flex: 1 1 auto;
+  min-height: 300px;
+  position: relative;
+}
+
+/* Right drawer */
+.drawer {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: min(var(--drawer-w), 90vw);
+  background: #fff;
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -8px 0 24px rgba(0,0,0,0.08);
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform 260ms ease, opacity 220ms ease;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+}
+.drawer.open {
+  transform: translateX(0);
+  opacity: 1;
+}
+.drawer-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.drawer-body {
+  padding: 12px;
+  overflow: auto;
+}
+
+
+
+/* Simple key/value table styling inside drawer */
+.kv {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.kv tr + tr td, .kv tr + tr th { border-top: 1px solid #edf0f3; }
+.kv th {
+  text-align: left;
+  color: #374151;
+  padding: 6px 8px;
+  width: 38%;
+  word-break: break-word;
+}
+.kv td {
+  padding: 6px 8px;
+  word-break: break-word;
+}

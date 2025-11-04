@@ -282,18 +282,75 @@
   }
   basemapButtons.forEach(btn => btn.addEventListener('click', () => setBasemap(btn.dataset.basemap)));
 
+  // keep a CSS var in sync with the filters panel height so the drawer can sit below it
+  function syncFiltersHeightVar(forceZero = false) {
+    if (forceZero) {
+      document.documentElement.style.setProperty('--filters-h', '0px');
+      return;
+    }
+
+    // Only measure when actually open (or in the "opening" phase)
+    const isOpenish = filtersPanel.classList.contains('open') || filtersPanel.classList.contains('opening');
+
+    if (!isOpenish) {
+      document.documentElement.style.setProperty('--filters-h', '0px'); // hard 0, no border bleed
+      return;
+    }
+
+    // Measure full box + margins while open
+    const rectH = filtersPanel.getBoundingClientRect().height; // padding+border included
+    const cs = getComputedStyle(filtersPanel);
+    const mt = parseFloat(cs.marginTop)    || 0;
+    const mb = parseFloat(cs.marginBottom) || 0;
+    document.documentElement.style.setProperty('--filters-h', `${rectH + mt + mb}px`);
+  }
+
+
+
   function setFiltersOpen(open) {
     if (open) {
+      // OPEN: set class, then measure on the next frame so layout is updated
+      filtersPanel.classList.add('opening');
       filtersPanel.classList.add('open');
       filtersPanel.setAttribute('aria-hidden','false');
       btnFilters.setAttribute('aria-expanded','true');
+
+      requestAnimationFrame(() => {
+        syncFiltersHeightVar(false);           // measure real height + margins
+        // after the transition, clean up the helper class and re-sync
+        const onEnd = () => {
+          filtersPanel.classList.remove('opening');
+          syncFiltersHeightVar(false);
+          map.updateSize();
+          filtersPanel.removeEventListener('transitionend', onEnd);
+        };
+        filtersPanel.addEventListener('transitionend', onEnd);
+      });
     } else {
+      // CLOSE: snap height to 0 immediately so the drawer lines up with the map
+      filtersPanel.classList.add('closing');
       filtersPanel.classList.remove('open');
       filtersPanel.setAttribute('aria-hidden','true');
       btnFilters.setAttribute('aria-expanded','false');
+
+      syncFiltersHeightVar(true);              // <- force 0 so no residual gap
+      // let the panel animate its own collapse; when done, clean up
+      const onEnd = () => {
+        filtersPanel.classList.remove('closing');
+        // keep it at 0 to avoid border/padding residuals
+        syncFiltersHeightVar(true);
+        map.updateSize();
+        filtersPanel.removeEventListener('transitionend', onEnd);
+      };
+      filtersPanel.addEventListener('transitionend', onEnd);
     }
-    updateMapSizeSoon();
+
+    // drawer/map can ease toward the new top using your existing transitions
+    setTimeout(() => map.updateSize(), 280);
   }
+
+
+
   btnFilters.addEventListener('click', () => setFiltersOpen(!filtersPanel.classList.contains('open')));
 
   // ---------- Styling helpers ----------
@@ -886,6 +943,8 @@ function addColoredPoint(lon, lat, color, labelText) {
   (async function boot() {
     setBasemap('google_sat');
     setFiltersOpen(false);
+    // in case the panel starts open due to server-side rendering or saved state
+    syncFiltersHeightVar();    
     populateDistricts();
     renderAssetsList();
     setAssetsUIByMode('none');
@@ -914,7 +973,8 @@ function addColoredPoint(lon, lat, color, labelText) {
       drawer.setAttribute('aria-hidden', 'false');
       drawer.classList.add('open');
       document.body.classList.add('drawer-open');
-      setTimeout(() => map.updateSize(), 280);
+      // ensure map resizes with the drawer gap and current filters height
+      setTimeout(() => { syncFiltersHeightVar(); map.updateSize(); }, 280);
     }
     function closeDrawer() {
       drawer.setAttribute('aria-hidden', 'true');

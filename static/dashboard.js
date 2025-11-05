@@ -141,6 +141,33 @@
   map.addControl(new ol.control.ZoomSlider());
   map.addControl(new ol.control.Rotate());
 
+  // --- Always-on-top, NON-declutter layer for SELECTED points only ---
+  const prioritySource = new ol.source.Vector();
+  const priorityLayer  = new ol.layer.Vector({
+    source: prioritySource,
+    declutter: false,   // <-- crucial: never declutter selected points
+    zIndex: 30          // above pointsLayer(20) & linesLayer(10)
+  });
+  map.addLayer(priorityLayer);
+
+  // Keep track of temporary mirror features we add to priorityLayer
+  let selectedCopies = [];
+  function clearSelectedCopies() {
+    selectedCopies.forEach(f => prioritySource.removeFeature(f));
+    selectedCopies = [];
+  }
+  // Mirror only true points (road endpoints, asset points, line endpoints) to priority layer
+  function addPriorityCopyFrom(f) {
+    const geom = f.getGeometry?.();
+    if (!(geom instanceof ol.geom.Point)) return; // only points bypass declutter
+    const copy = new ol.Feature({ geometry: geom.clone() });
+    // Reuse the base visual so it looks identical; if style is array, keep the last (base) entry
+    const s = f.getStyle?.();
+    copy.setStyle(Array.isArray(s) ? s[s.length - 1] : s);
+    prioritySource.addFeature(copy);
+    selectedCopies.push(copy);
+  }
+
   // ---------- Drawer helpers (map resize only) ----------
   function updateMapSizeSoon(delay = 270) { setTimeout(() => map.updateSize(), delay); }
  
@@ -641,7 +668,12 @@ function addColoredPoint(lon, lat, color, labelText) {
   //   if (roadId) setSelectedRoadId(roadId);
   // });
 
-  function clearMap() { pointsSource.clear(); linesSource.clear(); }
+  function clearMap() {
+    pointsSource.clear();
+    linesSource.clear();
+    clearSelectedCopies();
+    prioritySource.clear();
+  }
 
   function fitAll() {
     const ex1 = pointsSource.getExtent();
@@ -1132,6 +1164,8 @@ function addColoredPoint(lon, lat, color, labelText) {
     }
 
     function highlightRoadById(roadId) {
+      // remove old mirrored points first
+      clearSelectedCopies();
       // 1) First, restore everyone to their base (normal) look
       pointsSource.getFeatures().forEach(styleByFeatureReset);
       linesSource.getFeatures().forEach(styleByFeatureReset);
@@ -1143,7 +1177,18 @@ function addColoredPoint(lon, lat, color, labelText) {
       pointsSource.getFeatures().forEach(f => {
         const same = String(f.get('road_id') || '') === String(roadId);
 
-        if (same) { any = true; return; } // leave selected features as-is (full style)
+        if (same) {
+          any = true;
+          // Mirror only point-like features so declutter can't hide them:
+          // - regular asset points (kind === 'point')
+          // - line endpoints (kind === 'line-endpoint')
+          // - road start/end (feature_type === 'road_endpoint')
+          const kind = f.get('kind');
+          if (kind === 'point' || kind === 'line-endpoint' || f.get('feature_type') === 'road_endpoint') {
+            addPriorityCopyFrom(f);
+          }
+          return; // leave selected features as-is (full style)
+        }
 
         const kind = f.get('kind');
         const name = f.get('name') || '';
@@ -1194,6 +1239,7 @@ function addColoredPoint(lon, lat, color, labelText) {
         if (drawer) closeDrawer();
         pointsSource.getFeatures().forEach(styleByFeatureReset);
         linesSource.getFeatures().forEach(styleByFeatureReset);
+        clearSelectedCopies(); // also remove mirrored "always-visible" points
         return;
       }
 

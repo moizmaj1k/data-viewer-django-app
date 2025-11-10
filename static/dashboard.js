@@ -415,6 +415,114 @@
 
   btnFilters.addEventListener('click', () => setFiltersOpen(!filtersPanel.classList.contains('open')));
 
+
+  // --- Abbreviations for compact bar labels (fallback: first 2 letters) ---
+  const ASSET_ABBR = new Map([
+    ['bridge','Br'], ['culvert','Cu'], ['signboard','Sb'], ['toll','Tl'],
+    ['lightpole','Lp'], ['interchange','Ic'], ['roadcrossing','Rc'],
+    ['drainage','Dr'], ['retainingwall','Rw'], ['guardrail','Gr'],
+    ['dykecurbstone','Dc'], ['tunnel','Tu'], ['patchcondition','Pc']
+  ]);
+  function abbrev(key){
+    if (!key) return '';
+    const k = String(key).toLowerCase().replace(/\s+/g,'');
+    return ASSET_ABBR.get(k) || k.slice(0,2).toUpperCase();
+  }
+
+  // Build a compact horizontal bar chart from {assetType: count, ...}
+  // Rules:
+  //  - only show counts > 0
+  //  - sort desc by count
+  //  - label uses full asset name (no abbreviations)
+  //  - value sits to the right of the bar, outside
+  function makeCountsChart(countsObj) {
+    const entries = Object.entries(countsObj || {}).filter(([, n]) => Number(n) > 0);
+    if (!entries.length) return null;
+    entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+    const maxV = Math.max(...entries.map(([, n]) => Number(n)), 1);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'drawer-section';
+    const h = document.createElement('h4');
+    h.textContent = 'Asset Counts';
+    wrap.appendChild(h);
+
+    const chart = document.createElement('div');
+    chart.className = 'bar-chart';
+
+    entries.forEach(([assetName, count]) => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+
+      const lab = document.createElement('div');
+      lab.className = 'bar-label';
+      // full name with count in bold brackets
+      lab.innerHTML = `${assetName} <b>(${count})</b>`;
+      row.appendChild(lab);
+
+      const track = document.createElement('div');
+      track.className = 'bar-track';
+
+      const fill = document.createElement('div');
+      fill.className = 'bar-fill';
+      const pct = Math.round((Number(count) / maxV) * 100);
+      requestAnimationFrame(() => { fill.style.width = `${pct}%`; });
+
+      // only keep the bar fill (no numeric label on bar)
+      track.appendChild(fill);
+      row.appendChild(track);
+      chart.appendChild(row);
+    });
+
+    wrap.appendChild(chart);
+    return wrap;
+  }
+
+  // Extract URLs from pics (road or asset) in many shapes
+  function extractPics(pics){
+    if (!pics) return [];
+    try {
+      if (Array.isArray(pics)) return pics.filter(Boolean);
+      const parsed = typeof pics === 'string' ? JSON.parse(pics) : pics;
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.images)) return parsed.images.filter(Boolean);
+        return Object.values(parsed).filter(Boolean);
+      }
+    } catch(e){}
+    if (typeof pics === 'string'){
+      if (pics.includes(',')) return pics.split(',').map(s => s.trim()).filter(Boolean);
+      return [pics].filter(Boolean);
+    }
+    return [];
+  }
+
+  // Build a tiny gallery (click: open image in new tab)
+  function makeGallery(urls, title='Images'){
+    const arr = (urls || []).filter(Boolean);
+    if (!arr.length) return null;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'drawer-section';
+    const h = document.createElement('h4'); h.textContent = title;
+    wrap.appendChild(h);
+
+    const grid = document.createElement('div');
+    grid.className = 'gallery';
+    arr.forEach(u => {
+      const a = document.createElement('a');
+      a.href = u; a.target = '_blank'; a.rel = 'noopener';
+      const img = document.createElement('img');
+      img.src = u; img.alt = 'Image';
+      a.appendChild(img);
+      grid.appendChild(a);
+    });
+
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+
   // ---------- Styling helpers ----------
   // POINT assets / endpoints with metadata and re-style support
   function stylePoint(feature, {highlight = false} = {}) {
@@ -1025,12 +1133,48 @@ function addColoredPoint(lon, lat, color, labelText) {
     const drawerBody = document.getElementById('drawer-body');
     const drawerClose = document.getElementById('drawer-close');
 
-    function openDrawer(title, nodeOrHTML) {
+    function openDrawer(title, nodeOrHTML, opts = {}) {
       if (!drawer || !drawerTitle || !drawerBody) {
         console.warn('Drawer elements not found; showing console-only data.');
         return; // don’t throw; still allow highlight to work
       }
-      drawerTitle.textContent = title || 'Details';
+      // Build title + tiny id subtitle
+      drawerTitle.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'drawer-title-wrap';
+      const h = document.createElement('div');
+      h.textContent = title || 'Details';
+      const metaCol = document.createElement('div');
+      // ID line
+      if (opts && opts.id != null) {
+        const sub = document.createElement('div');
+        sub.className = 'drawer-subid';
+        const idText = String(opts.id);
+        sub.innerHTML = `ID: <code>${idText}</code>`;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'copy-id-btn';
+        copy.textContent = '📋';
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(idText);
+            copy.textContent = '📋 ✓';
+            setTimeout(()=>copy.textContent='📋', 1200);
+          } catch {}
+        });
+        sub.appendChild(copy);
+        metaCol.appendChild(sub);
+      }
+      // District line (no copy), shown when provided
+      if (opts && opts.district != null) {
+        const sub2 = document.createElement('div');
+        sub2.className = 'drawer-subid';
+        sub2.innerHTML = `District: <code>${String(opts.district)}</code>`;
+        metaCol.appendChild(sub2);
+      }
+      wrap.appendChild(h);
+      if (metaCol.childNodes.length) wrap.appendChild(metaCol);
+      drawerTitle.appendChild(wrap);
       drawerBody.innerHTML = '';
       if (typeof nodeOrHTML === 'string') {
         drawerBody.innerHTML = nodeOrHTML;
@@ -1052,10 +1196,12 @@ function addColoredPoint(lon, lat, color, labelText) {
     if (drawerClose) drawerClose.addEventListener('click', closeDrawer);
 
     // Helpers to render JSON table quickly
-    function objToTable(obj) {
+    function objToTable(obj, skip = []) {
       const tbl = document.createElement('table');
       tbl.className = 'kv';
+      const SKIP = new Set(['id','pics', ...skip]);
       Object.entries(obj || {}).forEach(([k,v]) => {
+        if (SKIP.has(k)) return;
         const tr = document.createElement('tr');
         const th = document.createElement('th'); th.textContent = k;
         const td = document.createElement('td'); td.textContent = typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
@@ -1096,6 +1242,97 @@ function addColoredPoint(lon, lat, color, labelText) {
       if (!res.ok) throw new Error('asset fetch failed');
       return res.json();
     }
+
+    // --- Image Lightbox (zoom/rotate) ---
+    let _imgBox, _imgEl, _scale = 1, _deg = 0;
+    function ensureLightbox() {
+      if (_imgBox) return;
+      _imgBox = document.createElement('div');
+      _imgBox.className = 'imglightbox';
+      _imgBox.setAttribute('hidden','');
+      _imgBox.innerHTML = `
+        <div class="imglightbox__panel" role="dialog" aria-modal="true">
+          <div class="imglightbox__stage">
+            <img class="imglightbox__img" alt="">
+          </div>
+          <div class="imglightbox__tools">
+            <button class="imglightbox__btn" data-act="zoom-in">Zoom +</button>
+            <button class="imglightbox__btn" data-act="zoom-out">Zoom −</button>
+            <button class="imglightbox__btn" data-act="rotate">Rotate ↻</button>
+            <button class="imglightbox__btn" data-act="close">Close ✕</button>
+          </div>
+        </div>`;
+      document.body.appendChild(_imgBox);
+      _imgEl = _imgBox.querySelector('.imglightbox__img');
+      _imgBox.addEventListener('click', (e) => {
+        // click backdrop closes
+        if (e.target === _imgBox) closeImgBox();
+      });
+      _imgBox.querySelectorAll('[data-act]').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+          const act = e.currentTarget.getAttribute('data-act');
+          if (act === 'close') return closeImgBox();
+          if (act === 'zoom-in') { _scale = Math.min(6, _scale + 0.25); applyImgTf(); }
+          if (act === 'zoom-out') { _scale = Math.max(0.25, _scale - 0.25); applyImgTf(); }
+          if (act === 'rotate') { _deg = (_deg + 90) % 360; applyImgTf(); }
+        });
+      });
+      document.addEventListener('keydown', (e)=>{
+        if (e.key === 'Escape' && !_imgBox.hasAttribute('hidden')) closeImgBox();
+      });
+    }
+    function applyImgTf(){ if (_imgEl) _imgEl.style.transform = `scale(${_scale}) rotate(${_deg}deg)`; }
+    function openImgBox(src){
+      ensureLightbox();
+      _scale = 1; _deg = 0; applyImgTf();
+      _imgEl.src = src;
+      _imgBox.removeAttribute('hidden');
+    }
+    function closeImgBox(){ _imgBox?.setAttribute('hidden',''); }
+
+    // Normalize pics coming from API (array, JSON string, comma string, or alt keys)
+    function normalizePics(obj) {
+      const tryArr = (...keys) => {
+        for (const k of keys) {
+          const v = obj?.[k];
+          if (!v) continue;
+          if (Array.isArray(v)) return v.filter(Boolean);
+          if (typeof v === 'string') {
+            // 1) JSON array string
+            const s = v.trim();
+            if (s.startsWith('[') && s.endsWith(']')) {
+              try { const arr = JSON.parse(s); if (Array.isArray(arr)) return arr.filter(Boolean); } catch {}
+            }
+            // 2) comma-separated
+            if (s.includes(',')) return s.split(',').map(t=>t.trim()).filter(Boolean);
+            // 3) single url
+            if (/^https?:\/\//i.test(s)) return [s];
+          }
+        }
+        return [];
+      };
+      // common fallbacks: pics, images, image_urls, photos
+      return tryArr('pics','images','image_urls','photos');
+    }
+
+    // --- Drawer gallery helper: open images in modal ---
+    function makeGallery(urls = [], title = 'Images') {
+      const wrap = document.createElement('div');
+      if (!urls.length) {
+        const p = document.createElement('p'); p.textContent = 'No images found.'; wrap.appendChild(p); return wrap;
+      }
+      const h = document.createElement('h4'); h.textContent = title; wrap.appendChild(h);
+      const g = document.createElement('div'); g.className = 'gallery'; wrap.appendChild(g);
+      urls.forEach(u => {
+        const a = document.createElement('a');
+        a.href = u; a.target = '_blank'; a.rel = 'noopener';
+        const img = document.createElement('img'); img.src = u; img.alt = '';
+        a.appendChild(img);
+        a.addEventListener('click', (e)=>{ e.preventDefault(); openImgBox(u); });
+        g.appendChild(a);
+      });
+      return wrap;
+    }    
 
     // Highlight helpers
     const defaultPointStyle = new ol.style.Style({ image: dot('#7c3aed', 6) });
@@ -1288,18 +1525,27 @@ function addColoredPoint(lon, lat, color, labelText) {
         if (ftype === 'road_endpoint' && roadId) {
           const hasAny = highlightRoadById(roadId);
           if (!hasAny) {
-            await fetchRoadAssetsOnce(roadId);
+            await fetchRoadAssetsOnce(roadId); // keeps your current highlight logic intact
             highlightRoadById(roadId);
           }
+
+          // Get counts and the road object (which holds road-level pics)
           const res = await fetch(`/api/road/${roadId}/?include=counts`);
           const payload = await res.json();
+
           const panel = document.createElement('div');
-          panel.appendChild(objToTable(payload.road));
-          const h = document.createElement('h4');
-          h.textContent = 'Asset Counts';
-          panel.appendChild(h);
-          panel.appendChild(objToTable(payload.counts || {}));
-          openDrawer(payload.road.name || 'Road', panel);
+          // top: counts as bar chart with outside values
+          const chart = makeCountsChart(payload.counts || {});
+          panel.appendChild(chart);
+          // then: road images
+          const pics = normalizePics(payload.road);
+          if (pics.length) panel.appendChild(makeGallery(pics, 'Road Images'));
+          // finally: details table without id/pics/name/district (redundant)
+          panel.appendChild(objToTable(payload.road, ['name','district']));
+          openDrawer(payload.road.name || 'Road', panel, {
+            id: payload.road?.id,
+            district: payload.road?.district ?? payload.road?.district_code ?? payload.road?.district_name
+          });
           return;
         }
 
@@ -1307,7 +1553,8 @@ function addColoredPoint(lon, lat, color, labelText) {
         if ((ftype === 'asset' || ftype === 'asset_endpoint') && assetId) {
           const payload = await fetchAsset(assetId);
           const asset = payload.asset || {};
-          // Highlight full road (without changing road endpoints colors)
+
+          // Keep your road highlight behavior as-is
           if (asset.road_id) {
             const hasAny = highlightRoadById(asset.road_id);
             if (!hasAny) {
@@ -1315,7 +1562,16 @@ function addColoredPoint(lon, lat, color, labelText) {
               highlightRoadById(asset.road_id);
             }
           }
-          openDrawer(`${(asset.type || 'Asset').toString().toUpperCase()}`, objToTable(asset));
+          const panel = document.createElement('div');
+          // asset images first (now normalized)
+          const pics = normalizePics(asset);
+          if (pics.length) panel.appendChild(makeGallery(pics, 'Asset Images'));
+          // hide id/pics/district (redundant)
+          panel.appendChild(objToTable(asset, ['district']));
+          openDrawer(`${(asset.type || 'Asset').toString().toUpperCase()}`, panel, {
+            id: asset.id,
+            district: asset.district ?? asset.district_code ?? asset.district_name
+          });
           return;
         }
       } catch (err) {

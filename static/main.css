@@ -6,6 +6,8 @@
   --topbar-gap: 10px;
   --map-drawer-gap: 8px;  
   --map-outer-gap: 14px;
+  --warn: #ffffff;     /* Bootstrap warning */
+  --warn-d: #e4e4e4;   /* Bootstrap warning (hover/darker) */
   --fx-fast: 220ms;
   --fx-slow: 420ms;
   --fx-slower: 560ms; 
@@ -97,6 +99,23 @@ body.drawer-open #map {
 }
 .btn-solid:hover { filter: brightness(0.95); }
 
+/* Solid warning button – same shape/weight as .btn-solid, but amber */
+.btn-warning {
+  border: 1px solid var(--warn-d);
+  background: var(--warn);
+  color: #111;                 /* readable on amber; switch to #fff if you prefer */
+  padding: 8px 14px;
+  font-size: 12px;
+  border-radius: 8px;
+  font-weight: 400;
+}
+.btn-warning:hover {
+  filter: brightness(0.97);
+  background: var(--warn-d);
+  border-color: var(--warn-d);
+  color: #000000;                 /* small touch on hover */
+}
+
 .sep {
   width: 1px;
   height: 20px;
@@ -162,6 +181,23 @@ body.drawer-open #map {
   border: 1px solid #cfd3d8;
   border-radius: 8px;
   background: #fff;
+}
+
+/* District select: nicer arrow + extra right padding */
+.filters-form select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 8 10 12 14 8'/></svg>")
+    no-repeat right 10px center / 14px 14px #fff;
+  padding-right: 36px;              /* ← space for the arrow */
+}
+
+/* Optional: consistent focus for selects */
+.filters-form select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29,78,216,.18);
 }
 
 /* Multi-select dropdown */
@@ -267,12 +303,16 @@ body.drawer-open #map {
 }
 .drawer.open { transform: translateX(0); opacity: 1; }
 .drawer-head {
-  padding: 10px 12px;
+  padding: 0px 12px;
   border-bottom: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
+.drawer-title-wrap{display:flex;flex-direction:column}
+.drawer-subid{margin-top:2px;font-size:11px;color:#6b7280;display:flex;align-items:center;gap:6px}
+.copy-id-btn{border:1px solid #e5e7eb;border-radius:8px;padding:2px 6px;font-size:11px;background:#fff;cursor:pointer}
+.copy-id-btn:hover{background:#f8fafc}
 .drawer-body {
   padding: 12px;
   overflow: auto;
@@ -298,3 +338,76 @@ body.drawer-open #map {
   padding: 6px 8px;
   word-break: break-word;
 }
+
+
+
+/* Drawer close button style (reuse Add Layer look) */
+.drawer .layer-modal__close{
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.drawer .layer-modal__close:hover{ background: #f6f8fa; }
+
+/* Drawer content sections */
+.drawer-section{ display: grid; gap: 8px; margin-bottom: 12px; }
+.drawer-section h4{ margin: 0; font-size: 14px; color: #111; }
+
+/* Compact horizontal bar chart for counts */
+.bar-chart{ display: grid; gap: 8px; }
+.bar-row{display:block}
+.bar-label{ font-size: 12px; color: #374151; margin-bottom: 2px; }
+.bar-track{
+  position:relative;
+  height:14px;                     /* a bit slimmer to save vertical space */
+  border-radius:10px;               /* rounder edges */
+  background:#eef2f7;
+  max-width:100%;
+  overflow:hidden;                  /* avoid any horizontal scrollbar */
+  padding-right:38px;               /* reserve space for the value label */
+}
+.bar-fill{
+  position:absolute;inset:0 auto 0 0;width:0%;
+  border-radius:10px;               /* keep same rounding on the fill */
+  background:#3b82f6
+}
+.bar-value{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  font-size:12px;color:#000;font-weight:700;
+}
+
+/* Road / Asset image gallery */
+/* Bigger 2-up image gallery in the drawer */
+.gallery{
+  display:grid;
+  grid-template-columns:repeat(2, 1fr);
+  gap:12px
+}
+.gallery a{
+  display:block;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff
+}
+.gallery img{
+  display:block;width:100%;height:200px;object-fit:cover
+}
+
+/* ---------- Image Lightbox ---------- */
+.imglightbox{
+  position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);
+  display:flex;align-items:center;justify-content:center
+}
+.imglightbox[hidden]{display:none}
+.imglightbox__panel{
+  position:relative;background:#111;border-radius:12px;max-width:92vw;max-height:88vh;
+  display:flex;flex-direction:column;gap:8px;padding:10px
+}
+.imglightbox__stage{
+  position:relative;background:#000;overflow:hidden;border-radius:8px;display:flex;align-items:center;justify-content:center
+}
+.imglightbox__img{max-width:100%;max-height:74vh;transform-origin:center center;transition:transform .15s ease}
+.imglightbox__tools{display:flex;gap:8px;justify-content:flex-end}
+.imglightbox__btn{border:1px solid #374151;background:#1f2937;color:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
+.imglightbox__btn:hover{background:#111827}

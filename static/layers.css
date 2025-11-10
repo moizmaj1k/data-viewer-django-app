@@ -68,11 +68,28 @@
 .layer-toggles{
   display:flex; gap:10px; align-items:center; margin-left:8px; flex-wrap:wrap;
 }
-.layer-chip{
-  display:inline-flex; gap:6px; align-items:center;
-  border:1px solid #cfd3d8; background:#fff;
-  padding:4px 8px; border-radius:999px; font-size:12px;
+#btn-add-layer,
+.layer-chip {
+  border: 1px solid #cfd3d8;
+  background: #fff;
+  border-radius: 8px;       /* same curved edge radius as Filters */
+  padding: 6px 12px;        /* same padding as Filters */
+  font-size: 12px;
+  font-weight: 500;
+  color: #111;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-.layer-chip input{ accent-color:#1d4ed8; width:14px; height:14px; }
-/* Prevent page scroll while modal is open */
-body.modal-open { overflow: hidden; }
+
+#btn-add-layer:hover,
+.layer-chip:hover {
+  background: #f6f8fa;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Adjust layer chip checkboxes to sit nicely inside */
+.layer-chip input {
+  accent-color: #1d4ed8;
+  width: 10px;
+  height: 10px;
+  margin-right: 2px;
+}

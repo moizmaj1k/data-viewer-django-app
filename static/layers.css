@@ -1,0 +1,78 @@
+.layer-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: none;                 /* hidden by default */
+  /* center the dialog */
+  place-items: center;
+}
+.layer-modal[aria-hidden="false"] { display: grid !important; }
+.layer-modal__backdrop{
+  position: absolute; inset: 0;
+  background: rgba(15,18,28,0.45);
+  backdrop-filter: blur(6px);    /* stronger blur */
+  -webkit-backdrop-filter: blur(6px);
+}
+.layer-modal__dialog{
+  position: relative;
+  width: min(560px, 94vw);       /* a bit wider & responsive */
+  background:#fff;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.28); /* stronger shadow */
+  display: flex; flex-direction: column; overflow: hidden;
+  transform: translateY(8px);
+  animation: modal-in .18s ease-out both;
+}
+@keyframes modal-in { from { opacity: .6; transform: translateY(18px);} to {opacity:1; transform: translateY(0);} }
+
+.layer-modal__close{
+  border: 0; background: transparent; font-size: 22px; line-height: 1;
+  color:#334155; cursor: pointer; padding: 4px 6px; border-radius: 8px;
+}
+.layer-modal__close:hover{ background:#f3f4f6; }
+.layer-modal__head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 14px; border-bottom: 1px solid #edf0f3;
+}
+.layer-modal__body { padding: 16px; display: grid; gap: 14px; }
+.layer-modal__foot { padding: 12px 16px; border-top: 1px solid #edf0f3; display:flex; gap:8px; justify-content:flex-end; }
+.layer-status { min-height: 18px; font-size: 12px; color: #334155; }
+.layer-status.error { color: #b91c1c; }
+.field { display: grid; gap: 6px; }
+.field > span { font-size: 12px; color: #374151; }
+.muted { color: #6b7280; font-size: 12px; }
+
+/* --- Dropzone & File button --- */
+.dropzone{
+  border:1.5px dashed #cfd3d8;
+  border-radius:12px;
+  padding:18px;
+  text-align:center;
+  background:#fafafa;
+  outline:none;
+}
+.dropzone:focus{ box-shadow:0 0 0 3px rgba(29,78,216,.2); }
+.dropzone.dz-over{ background:#f3f4f6; border-color:#9aa3af; }
+.dz-icon{ font-size:30px; line-height:1.2; }
+.dz-text{ margin-top:6px; font-size:14px; color:#374151; }
+.dz-sub{ font-size:12px; color:#6b7280; }
+.dz-filename{ margin-top:8px; font-size:12px; color:#111; }
+.file-btn{
+  display:inline-block; margin-top:10px; padding:8px 14px;
+  border:1px solid #1d4ed8; background:#1d4ed8; color:#fff;
+  border-radius:10px; font-size:13px; cursor:pointer; user-select:none;
+}
+.file-btn:hover{ filter:brightness(.96); }
+.file-btn input[type="file"]{ display:none; }
+
+/* --- Top bar layer toggles --- */
+.layer-toggles{
+  display:flex; gap:10px; align-items:center; margin-left:8px; flex-wrap:wrap;
+}
+.layer-chip{
+  display:inline-flex; gap:6px; align-items:center;
+  border:1px solid #cfd3d8; background:#fff;
+  padding:4px 8px; border-radius:999px; font-size:12px;
+}
+.layer-chip input{ accent-color:#1d4ed8; width:14px; height:14px; }
+/* Prevent page scroll while modal is open */
+body.modal-open { overflow: hidden; }

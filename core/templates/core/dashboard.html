@@ -9,6 +9,12 @@
 
   <!-- Page CSS -->
   <link rel="stylesheet" href="{% static 'main.css' %}">
+  <!-- Add-Layer modal CSS -->
+  <link rel="stylesheet" href="{% static 'layers.css' %}">
+  <!-- JSZip for KMZ unzip -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <!-- Add shpjs for Shapefile → GeoJSON in-browser -->
+  <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
 
   <!-- Our dashboard JS at bottom (see content block) -->
 {% endblock %}
@@ -25,6 +31,16 @@
       <button type="button" class="btn btn-outline" data-basemap="osm" title="OpenStreetMap">OSM</button>
     </div>
 
+    <!-- Divider -->
+    <span class="sep"></span>
+
+    <!-- Add Layer icon button -->
+    <button id="btn-add-layer" class="btn btn-outline" type="button" aria-haspopup="dialog" aria-controls="layer-modal">
+      ➕ Add layer
+    </button>
+    <!-- Live toggles for uploaded layers -->
+    <div id="layer-toggles" class="layer-toggles" aria-label="Map layers"></div>
+    
     <!-- Divider -->
     <span class="sep"></span>
 
@@ -130,6 +146,39 @@
 
   <!-- Dashboard logic -->
   <script defer src="{% static 'dashboard.js' %}"></script>
+  <!-- Add-Layer logic (after dashboard so it can see the map) -->
+  <script defer src="{% static 'layers.js' %}"></script>
+
+<!-- Add Layer Modal -->
+<div id="layer-modal" class="layer-modal" aria-hidden="true">
+  <!-- backdrop goes first so it sits *behind* the dialog -->
+  <div class="layer-modal__backdrop" aria-hidden="true"></div>
+  <div class="layer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="layer-modal-title">
+    <div class="layer-modal__head">
+      <h3 id="layer-modal-title">Add Layer</h3>
+      <button id="layer-modal-close" class="layer-modal__close" aria-label="Close">×</button>
+    </div>
+    <div class="layer-modal__body">
+      <p class="muted">Drop a file here or choose one. Supported: KMZ, KML, Shapefile (.zip), GeoJSON.</p>
+
+      <div id="layer-dropzone" class="dropzone" tabindex="0" aria-label="Drop file here">
+        <div class="dz-icon">⬆</div>
+        <div class="dz-text">Drop file to upload<br><span class="dz-sub">or</span></div>
+        <label class="file-btn">
+          <input id="layer-file" type="file" accept=".kmz,.kml,.zip,.geojson,.json" />
+          Choose File
+        </label>
+        <div id="layer-filename" class="dz-filename" aria-live="polite"></div>
+      </div>
+
+      <div id="layer-status" class="layer-status" role="status" aria-live="polite"></div>
+    </div>
+    <div class="layer-modal__foot">
+      <button id="layer-cancel" class="btn btn-outline">Cancel</button>
+      <button id="layer-add" class="btn btn-solid">Add layer</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 

@@ -137,9 +137,44 @@
     ],
     view: new ol.View({ center: ol.proj.fromLonLat([71.5, 34.0]), zoom: 7 })
   });
+  // ---- Make map globally visible for late-loaded modules (layers modal)
+  window.__olMap = map;
+  // Resolve (or create+resolve) a readiness promise exactly once
+  if (!window.__MAP_READY__) {
+    window.__MAP_READY__ = new Promise((res) => (window.__MAP_READY_RESOLVE__ = res));
+  }
+  if (window.__MAP_READY_RESOLVE__) {
+    window.__MAP_READY_RESOLVE__(map);
+    window.__MAP_READY_RESOLVE__ = null;
+  }
   map.addControl(new ol.control.ScaleLine());
   map.addControl(new ol.control.ZoomSlider());
   map.addControl(new ol.control.Rotate());
+
+  // >>> Expose a stable public surface for layers.js and anyone else
+  window.AppMap = { map, ol };
+  window.__APP_MAP_READY__ = true;
+
+  // If any script registered "waiters" before we existed, flush them now.
+  // (This guarantees resolution even if layers.js loaded first.)
+  if (Array.isArray(window.__APP_MAP_WAITERS__) && window.__APP_MAP_WAITERS__.length) {
+    try {
+      window.__APP_MAP_WAITERS__.splice(0).forEach(fn => {
+        try { fn(window.AppMap); } catch (e) { console.warn('[dashboard] waiter failed:', e); }
+      });
+    } catch (e) {
+      console.warn('[dashboard] flushing waiters failed:', e);
+    }
+  }
+
+  // Fire events too (helpful for tools/dev)
+  try {
+    const evt = new CustomEvent('appmap:ready');
+    window.dispatchEvent(evt);
+    document.dispatchEvent(evt);
+  } catch (e) {
+    console.warn('[dashboard] CustomEvent dispatch issue (non-fatal):', e);
+  }
 
   // --- Always-on-top, NON-declutter layer for SELECTED points only ---
   const prioritySource = new ol.source.Vector();

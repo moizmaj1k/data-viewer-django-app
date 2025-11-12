@@ -37,12 +37,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.staticfiles',
     'core',  # our app
+    "django_browser_reload",
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    "django_browser_reload.middleware.BrowserReloadMiddleware",
 ]
 
 ROOT_URLCONF = 'rams.urls'
@@ -53,7 +55,9 @@ TEMPLATES = [
         # Server-side rendered templates live here:
         'DIRS': [Path(__file__).resolve().parent.parent / 'templates'],
         'APP_DIRS': True,
-        'OPTIONS': {},
+        'OPTIONS': {
+            "builtins": ["django_browser_reload.templatetags.django_browser_reload"],
+        },
     },
 ]
 

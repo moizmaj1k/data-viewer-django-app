@@ -706,6 +706,54 @@ function addColoredPoint(lon, lat, color, labelText) {
   pointsSource.addFeature(feat);
 }
 
+// --- Pointer (red downward arrow) decoration over the selected marker ---
+let _pointerCopy = null;
+
+function clearPointer() {
+  if (_pointerCopy) {
+    try { prioritySource.removeFeature(_pointerCopy); } catch {}
+    _pointerCopy = null;
+  }
+}
+
+function makePointerArrowStyle() {
+  // A small triangle pointing DOWN, displaced above the marker’s label
+  return new ol.style.Style({
+    image: new ol.style.RegularShape({
+      points: 3,                  // triangle
+      radius: 9,                  // size of pointer head
+      fill:  new ol.style.Fill({ color: '#ef4444' }),  // red
+      stroke:new ol.style.Stroke({ color: '#ffffff', width: 2 }), // white border
+      rotation: Math.PI,           // 180° so it points DOWN
+      displacement: [0, -33]
+    }),
+    // Lift the arrow above the marker/label (negative Y = up in OL screen space)
+    zIndex: 100
+  });
+}
+
+/**
+ * Place the pointer arrow *over* a specific POINT-like feature.
+ * We render a copy in `priorityLayer` so it’s always-on-top and not decluttered.
+ */
+function decorateWithPointerArrow(pointFeature) {
+  clearPointer();
+
+  const geom = pointFeature?.getGeometry?.();
+  if (!(geom instanceof ol.geom.Point)) return;
+
+  const copy = new ol.Feature({ geometry: geom.clone() });
+
+  // Respect current visual (badge / dot / label) and simply overlay the arrow
+  const base = pointFeature.getStyle?.();
+  const baseArr = Array.isArray(base) ? base : (base ? [base] : []);
+  copy.setStyle([...baseArr, makePointerArrowStyle()]);
+
+  prioritySource.addFeature(copy);
+  _pointerCopy = copy;
+}
+
+
   // ---------- Highlighting & Sidebar ----------
   // function setSelectedRoadId(roadId) {
   //   SELECTED_ROAD_ID = roadId || null;
@@ -815,6 +863,7 @@ function addColoredPoint(lon, lat, color, labelText) {
     pointsSource.clear();
     linesSource.clear();
     clearSelectedCopies();
+    clearPointer();  
     prioritySource.clear();
   }
 
@@ -1060,6 +1109,8 @@ function addColoredPoint(lon, lat, color, labelText) {
             l.includes('patch')        ? 'Pc' : 'Pt';
 
           // Asset POINT feature, linked to its own asset id/type only
+          // Asset POINT feature, linked to its own asset id/type only
+          const typeKey = String(a.label || '').toLowerCase();
           addPoint(a.lon, a.lat, {
             color: '#7c3aed',
             label: short,
@@ -1067,15 +1118,16 @@ function addColoredPoint(lon, lat, color, labelText) {
             feature_type: 'asset',
             road_id: a.road_id || null,
             asset_kind: 'point',
-            asset_type: a.label || null
+            asset_type: typeKey || null
           });
         } else if (a.kind === 'line') {
           // Asset LINE feature and its endpoints, all linked to the same asset id/type
+          const typeKey = String(a.label || '').toLowerCase();
           addLine(a.start_lon, a.start_lat, a.end_lon, a.end_lat, {
             label: a.label || '',
             id: a.id,
             road_id: a.road_id || null,
-            asset_type: a.label || null
+            asset_type: typeKey || null
           });
         }
       });
@@ -1226,19 +1278,25 @@ function addColoredPoint(lon, lat, color, labelText) {
       const data = await res.json();
       (data.assets || []).forEach(a => {
         if (a.kind === 'point') {
+          const typeKey = String(a.label || '').toLowerCase();
           addPoint(a.lon, a.lat, {
             color: '#7c3aed', label: (a.label||'').slice(0,2).toUpperCase(), id: a.id,
-            feature_type: 'asset', road_id: a.road_id || null, asset_kind: 'point', asset_type: a.label || null
+            feature_type: 'asset', road_id: a.road_id || null, asset_kind: 'point', asset_type: typeKey || null
           });
         } else {
+          const typeKey = String(a.label || '').toLowerCase();
           addLine(a.start_lon, a.start_lat, a.end_lon, a.end_lat, {
-            label: a.label || '', id: a.id, road_id: a.road_id || null, asset_type: a.label || null
+            label: a.label || '', id: a.id, road_id: a.road_id || null, asset_type: typeKey || null
           });
         }
       });
     }
-    async function fetchAsset(assetId) {
-      const res = await fetch(`/api/asset/${assetId}/`);
+
+    async function fetchAsset(assetId, assetType) {
+      const t = (assetType || '').toString().trim().toLowerCase();
+      const url = new URL(location.origin + `/api/asset/${assetId}/`);
+      if (t) url.searchParams.set('type', t); // fast-path on the backend
+      const res = await fetch(url);
       if (!res.ok) throw new Error('asset fetch failed');
       return res.json();
     }
@@ -1438,6 +1496,7 @@ function addColoredPoint(lon, lat, color, labelText) {
     function highlightRoadById(roadId) {
       // remove old mirrored points first
       clearSelectedCopies();
+      clearPointer();  
       // 1) First, restore everyone to their base (normal) look
       pointsSource.getFeatures().forEach(styleByFeatureReset);
       linesSource.getFeatures().forEach(styleByFeatureReset);
@@ -1512,6 +1571,7 @@ function addColoredPoint(lon, lat, color, labelText) {
         pointsSource.getFeatures().forEach(styleByFeatureReset);
         linesSource.getFeatures().forEach(styleByFeatureReset);
         clearSelectedCopies(); // also remove mirrored "always-visible" points
+        clearPointer();  
         return;
       }
 
@@ -1546,12 +1606,14 @@ function addColoredPoint(lon, lat, color, labelText) {
             id: payload.road?.id,
             district: payload.road?.district ?? payload.road?.district_code ?? payload.road?.district_name
           });
+          decorateWithPointerArrow(feat);
           return;
         }
 
         // 2) Asset points or line endpoints: show ONLY asset details, not whole road
         if ((ftype === 'asset' || ftype === 'asset_endpoint') && assetId) {
-          const payload = await fetchAsset(assetId);
+          const assetType = feat.get('asset_type') || null;
+          const payload = await fetchAsset(assetId, assetType);
           const asset = payload.asset || {};
 
           // Keep your road highlight behavior as-is
@@ -1572,6 +1634,17 @@ function addColoredPoint(lon, lat, color, labelText) {
             id: asset.id,
             district: asset.district ?? asset.district_code ?? asset.district_name
           });
+          // If the user clicked a point-like thing, decorate it directly
+          if (feat.get('kind') === 'point' || feat.get('kind') === 'line-endpoint') {
+            decorateWithPointerArrow(feat);
+          } else {
+            // Rare case: if the user clicked a line body but the drawer opened for the asset,
+            // try to target one endpoint (S/E) of that asset for the arrow.
+            const endpoints = pointsSource.getFeatures().filter(f =>
+              f.get('kind') === 'line-endpoint' && String(f.get('id')) === String(assetId)
+            );
+            if (endpoints.length) decorateWithPointerArrow(endpoints[0]);
+          }
           return;
         }
       } catch (err) {

@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     # path("admin/", admin.site.urls),
     path("", include("core.urls")),  # delegate all app routes to core.urls
+    path("__reload__/", include("django_browser_reload.urls")),
 ]
 
 # Dev static (optional; handy if you serve extra files in DEBUG)

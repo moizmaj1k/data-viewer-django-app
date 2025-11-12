@@ -59,11 +59,16 @@ LINE_ASSETS = {
                       'end_lat': 'end_lat',     'end_lon': 'end_lon'},
 }
 
+ASSET_REG = {}
+
 # A flat list for dynamic scanning:
 ALL_ASSET_MODELS = (
     [(k, 'point', v['model']) for k, v in POINT_ASSETS.items()] +
     [(k, 'line',  v['model']) for k, v in LINE_ASSETS.items()]
 )
+
+ASSET_REG.update({k: ("point", v["model"]) for k, v in POINT_ASSETS.items()})
+ASSET_REG.update({k: ("line",  v["model"]) for k, v in LINE_ASSETS.items()})
 
 # -----------------------
 # Helpers
@@ -112,6 +117,22 @@ def find_asset_record(asset_id):
             return type_key, kind, inst
         except Model.DoesNotExist:
             continue
+    return None, None, None
+
+def model_from_type_or_table(type_key: str | None, table: str | None):
+    """
+    Resolve (kind, type_key, Model) from either an asset type key or a DB table name.
+    Returns (kind, type_key, Model) or (None, None, None).
+    """
+    if type_key and type_key in ASSET_REG:
+        kind, Model = ASSET_REG[type_key]
+        return kind, type_key, Model
+
+    if table:
+        for k, (kind, Model) in ASSET_REG.items():
+            if Model._meta.db_table == table:
+                return kind, k, Model
+
     return None, None, None
 
 # -----------------------
@@ -275,16 +296,32 @@ def api_road_detail(request, road_id):
 # -----------------------
 def api_asset_detail(request, asset_id):
     """
-    GET /api/asset/<uuid>/
-    Dynamically finds the asset in any of the known tables and dumps the full row.
-    Adds: kind (point|line), type (asset key), model (db_table), road_id (uuid).
+    GET /api/asset/<uuid>/?type=<asset_type_key>&table=<db_table>
+      - Provide either `type` OR `table` to avoid scanning all models.
+      - If neither is provided, we fall back to the existing scan (find_asset_record).
+    Response stays identical to your current shape.
     """
-    type_key, kind, inst = find_asset_record(asset_id)
-    if not inst:
-        raise Http404("Asset not found")
+    type_param  = (request.GET.get("type") or "").strip().lower()
+    table_param = (request.GET.get("table") or "").strip()
+
+    # Fast-path: resolve model from type/table if provided
+    kind, type_key, Model = model_from_type_or_table(type_param or None, table_param or None)
+
+    inst = None
+    if Model:
+        try:
+            inst = Model.objects.get(id=asset_id)
+        except Model.DoesNotExist:
+            raise Http404("Asset not found")
+    else:
+        # Fallback to the existing cross-table scan
+        type_key, kind, inst = find_asset_record(asset_id)
+        if not inst:
+            raise Http404("Asset not found")
 
     data = safe_serialize(inst)
-    # Try to expose the road_id consistently
+
+    # Normalize road_id
     road_id_val = None
     try:
         road_id_val = str(getattr(inst, 'road_id', None) or getattr(inst, 'road_id_id', None) or getattr(inst.road, 'id', None))

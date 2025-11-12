@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html>
 <head>
@@ -8,6 +9,12 @@
   {% block head_extra %}{% endblock %}
 </head>
 <body>
+  <!-- Browser reload (no template tags needed) -->
+  <script
+    src="{% static 'django-browser-reload/reload-listener.js' %}"
+    data-workers-url="/__reload__/reload-worker.js"
+    defer>
+  </script>
   <header class="topbar">
     <div class="brand">Data Control</div>
     <nav class="toolbar">

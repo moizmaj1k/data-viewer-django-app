@@ -314,8 +314,13 @@ body.drawer-open #map {
 .copy-id-btn{border:1px solid #e5e7eb;border-radius:8px;padding:2px 6px;font-size:11px;background:#fff;cursor:pointer}
 .copy-id-btn:hover{background:#f8fafc}
 .drawer-body {
-  padding: 12px;
+  padding: 8px;
   overflow: auto;
+}
+.drawer-body h4 {
+  margin-top: 4px;
+  margin-bottom: 4px;
+  font-size: 16px;
 }
 
 
@@ -355,7 +360,46 @@ body.drawer-open #map {
 
 /* Drawer content sections */
 .drawer-section{ display: grid; gap: 8px; margin-bottom: 12px; }
-.drawer-section h4{ margin: 0; font-size: 14px; color: #111; }
+.drawer-section h4{ margin: 0; font-size: 16px; color: #111; }
+
+ /* Collapsible section header (title + right-aligned arrow) */
+ .cs-head{
+   display:flex;
+   align-items:center;
+   justify-content:space-between;
+   gap:8px;
+   margin:4px 0;
+ }
+ .cs-title{
+   margin:0;
+   line-height:1.2;
+   flex:1 1 auto;     /* keep arrow on the same line, right-aligned */
+   min-width:0;       /* prevent wrapping that pushes arrow below */
+ }
+ .cs-toggle{
+   border:0;
+   background:transparent;
+   cursor:pointer;
+   font-size:14px;
+   line-height:1;
+   padding:2px 4px;
+ }
+
+  /* Metadata grid chips */
+  .meta-grid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .meta-cell{
+    border:1px solid #1d4ed8;    /* blue border */
+    border-radius:8px;
+    padding:6px 8px;
+    font-size:12px;
+    flex:1 1 auto;
+    min-width:160px;             /* fill row, then wrap to next line */
+  }
+  .meta-cell b{ margin-right:6px; }
 
 /* Compact horizontal bar chart for counts */
 .bar-chart{ display: grid; gap: 8px; }

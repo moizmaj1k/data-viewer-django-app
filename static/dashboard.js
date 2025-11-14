@@ -441,11 +441,30 @@
     entries.sort((a, b) => Number(b[1]) - Number(a[1]));
     const maxV = Math.max(...entries.map(([, n]) => Number(n)), 1);
 
+    // outer section
     const wrap = document.createElement('div');
     wrap.className = 'drawer-section';
+
+    // header row: title + arrow
+    const head = document.createElement('div');
+    head.className = 'cs-head';
+
     const h = document.createElement('h4');
-    h.textContent = 'Asset Counts';
-    wrap.appendChild(h);
+    h.className = 'cs-title';
+    h.textContent = '🧮 Asset Counts';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cs-toggle';
+    btn.setAttribute('aria-expanded', 'true');
+    btn.textContent = '▲';
+
+    head.appendChild(h);
+    head.appendChild(btn);
+
+    // body with the chart
+    const body = document.createElement('div');
+    body.className = 'cs-body';
 
     const chart = document.createElement('div');
     chart.className = 'bar-chart';
@@ -456,7 +475,6 @@
 
       const lab = document.createElement('div');
       lab.className = 'bar-label';
-      // full name with count in bold brackets
       lab.innerHTML = `${assetName} <b>(${count})</b>`;
       row.appendChild(lab);
 
@@ -468,59 +486,26 @@
       const pct = Math.round((Number(count) / maxV) * 100);
       requestAnimationFrame(() => { fill.style.width = `${pct}%`; });
 
-      // only keep the bar fill (no numeric label on bar)
       track.appendChild(fill);
       row.appendChild(track);
       chart.appendChild(row);
     });
 
-    wrap.appendChild(chart);
-    return wrap;
-  }
+    body.appendChild(chart);
 
-  // Extract URLs from pics (road or asset) in many shapes
-  function extractPics(pics){
-    if (!pics) return [];
-    try {
-      if (Array.isArray(pics)) return pics.filter(Boolean);
-      const parsed = typeof pics === 'string' ? JSON.parse(pics) : pics;
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
-      if (parsed && typeof parsed === 'object') {
-        if (Array.isArray(parsed.images)) return parsed.images.filter(Boolean);
-        return Object.values(parsed).filter(Boolean);
-      }
-    } catch(e){}
-    if (typeof pics === 'string'){
-      if (pics.includes(',')) return pics.split(',').map(s => s.trim()).filter(Boolean);
-      return [pics].filter(Boolean);
-    }
-    return [];
-  }
-
-  // Build a tiny gallery (click: open image in new tab)
-  function makeGallery(urls, title='Images'){
-    const arr = (urls || []).filter(Boolean);
-    if (!arr.length) return null;
-
-    const wrap = document.createElement('div');
-    wrap.className = 'drawer-section';
-    const h = document.createElement('h4'); h.textContent = title;
-    wrap.appendChild(h);
-
-    const grid = document.createElement('div');
-    grid.className = 'gallery';
-    arr.forEach(u => {
-      const a = document.createElement('a');
-      a.href = u; a.target = '_blank'; a.rel = 'noopener';
-      const img = document.createElement('img');
-      img.src = u; img.alt = 'Image';
-      a.appendChild(img);
-      grid.appendChild(a);
+    // toggle behavior
+    btn.addEventListener('click', () => {
+      const open = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.textContent = open ? '▼' : '▲';
+      body.hidden = open;
     });
 
-    wrap.appendChild(grid);
+    wrap.appendChild(head);
+    wrap.appendChild(body);
     return wrap;
   }
+
 
 
   // ---------- Styling helpers ----------
@@ -1247,11 +1232,19 @@ function decorateWithPointerArrow(pointFeature) {
     }
     if (drawerClose) drawerClose.addEventListener('click', closeDrawer);
 
+    // Keys we never repeat in the "Details" table (shown elsewhere: gallery/metadata/header)
+    const HIDE_IN_DETAILS = new Set([
+      'id','pics','images','image_urls','photos',
+      'created_at','updated_at','created_by','updated_by',
+      'road','kind','type','model',
+      'district','district_code','district_name'
+    ]);
+
     // Helpers to render JSON table quickly
-    function objToTable(obj, skip = []) {
+    function objToTable(obj, extraSkip = []) {
       const tbl = document.createElement('table');
       tbl.className = 'kv';
-      const SKIP = new Set(['id','pics', ...skip]);
+      const SKIP = new Set([...HIDE_IN_DETAILS, ...extraSkip]);
       Object.entries(obj || {}).forEach(([k,v]) => {
         if (SKIP.has(k)) return;
         const tr = document.createElement('tr');
@@ -1373,24 +1366,136 @@ function decorateWithPointerArrow(pointFeature) {
       return tryArr('pics','images','image_urls','photos');
     }
 
-    // --- Drawer gallery helper: open images in modal ---
-    function makeGallery(urls = [], title = 'Images') {
+    // --- Collapsible section helper --------------------------------------------
+    function makeCollapsibleSection(title = 'Section', contentNode, {
+      open = true,
+      titleFontSize = '16px',
+      sectionClass = 'drawer-section'
+    } = {}) {
       const wrap = document.createElement('div');
-      if (!urls.length) {
-        const p = document.createElement('p'); p.textContent = 'No images found.'; wrap.appendChild(p); return wrap;
+      wrap.className = sectionClass;
+
+      // header row: title + arrow button on the right
+      const head = document.createElement('div');
+      head.className = 'cs-head';
+
+      const h = document.createElement('h4');
+      h.textContent = title;
+      h.style.fontSize = titleFontSize;
+      h.className = 'cs-title';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cs-toggle';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      // ▲ (open) ▼ (closed)
+      btn.textContent = open ? '▲' : '▼';
+
+      head.appendChild(h);
+      head.appendChild(btn);
+
+      const body = document.createElement('div');
+      body.className = 'cs-body';
+      if (contentNode instanceof Node) body.appendChild(contentNode);
+      else if (typeof contentNode === 'string') body.innerHTML = contentNode;
+
+      // initial state
+      body.hidden = !open;
+
+      btn.addEventListener('click', () => {
+        const isOpen = btn.getAttribute('aria-expanded') === 'true';
+        const next = !isOpen;
+        btn.setAttribute('aria-expanded', String(next));
+        btn.textContent = next ? '▲' : '▼';
+        body.hidden = !next;
+      });
+
+      wrap.appendChild(head);
+      wrap.appendChild(body);
+      return wrap;
+    }
+
+    // --- Metadata formatters ----------------------------------------------------
+    function fmtDateOnly(val) {
+      if (!val) return '';
+      // Expect "YYYY-MM-DDTHH:MM:SS.sss+00:00" -> take "YYYY-MM-DD"
+      const s = String(val);
+      const t = s.indexOf('T');
+      return t > 0 ? s.slice(0, t) : s.slice(0, 10);
+    }
+    function trimIdLast5(val) {
+      if (!val) return '';
+      const s = String(val);
+      return '...' + s.slice(-5);
+    }
+
+    // Build key-value chip
+    function makeMetaCell(key, value) {
+      const cell = document.createElement('div');
+      cell.className = 'meta-cell';
+      cell.innerHTML = `<b>${key}:</b> <span>${value ?? ''}</span>`;
+      return cell;
+    }
+
+    // Build Metadata grid from an asset object
+    function makeMetadataSection(assetObj = {}) {
+      const grid = document.createElement('div');
+      grid.className = 'meta-grid';
+
+      const created_at  = fmtDateOnly(assetObj.created_at || assetObj.createdAt);
+      const updated_at  = fmtDateOnly(assetObj.updated_at || assetObj.updatedAt);
+      const created_by  = trimIdLast5(assetObj.created_by || assetObj.createdBy);
+      const updated_by  = trimIdLast5(assetObj.updated_by || assetObj.updatedBy);
+      const roadRaw     = assetObj.road || assetObj.road_id || assetObj.roadId;
+      const road        = roadRaw ? trimIdLast5(roadRaw) : '';
+      const kind        = assetObj.kind ?? '';
+      const type        = assetObj.type ?? '';
+      const model       = assetObj.model ?? '';
+
+      // Only add a cell if we have some value (keeps it concise)
+      if (created_at) grid.appendChild(makeMetaCell('created_at', created_at));
+      if (updated_at) grid.appendChild(makeMetaCell('updated_at', updated_at));
+      if (created_by) grid.appendChild(makeMetaCell('created_by', created_by));
+      if (updated_by) grid.appendChild(makeMetaCell('updated_by', updated_by));
+      if (road)       grid.appendChild(makeMetaCell('road', road));
+      if (kind)       grid.appendChild(makeMetaCell('kind', kind));
+      if (type)       grid.appendChild(makeMetaCell('type', type));
+      if (model)      grid.appendChild(makeMetaCell('model', model));
+
+      // Collapsed by default, arrow ▼
+      return makeCollapsibleSection('🏷️ Metadata', grid, { open: false, titleFontSize: '16px' });
+    }
+
+
+
+    // --- Drawer gallery helper: open images in modal + collapsible -------------
+    function makeGallery(urls = [], title = '🖼️ Images') {
+      const wrap = document.createElement('div');
+      const arr = (urls || []).filter(Boolean);
+      if (!arr.length) {
+        const p = document.createElement('p'); 
+        p.textContent = 'No images found.'; 
+        wrap.appendChild( makeCollapsibleSection(title, p, { open: true, titleFontSize: '16px' }) );
+        return wrap;
       }
-      const h = document.createElement('h4'); h.textContent = title; wrap.appendChild(h);
-      const g = document.createElement('div'); g.className = 'gallery'; wrap.appendChild(g);
-      urls.forEach(u => {
+
+      const grid = document.createElement('div');
+      grid.className = 'gallery';
+      arr.forEach(u => {
         const a = document.createElement('a');
         a.href = u; a.target = '_blank'; a.rel = 'noopener';
         const img = document.createElement('img'); img.src = u; img.alt = '';
         a.appendChild(img);
+        // your lightbox hook
         a.addEventListener('click', (e)=>{ e.preventDefault(); openImgBox(u); });
-        g.appendChild(a);
+        grid.appendChild(a);
       });
+
+      // Wrap grid in a collapsible section (open by default, arrow ▲)
+      wrap.appendChild( makeCollapsibleSection(title, grid, { open: true, titleFontSize: '16px' }) );
       return wrap;
-    }    
+    }
+  
 
     // Highlight helpers
     const defaultPointStyle = new ol.style.Style({ image: dot('#7c3aed', 6) });
@@ -1599,9 +1704,11 @@ function decorateWithPointerArrow(pointFeature) {
           panel.appendChild(chart);
           // then: road images
           const pics = normalizePics(payload.road);
-          if (pics.length) panel.appendChild(makeGallery(pics, 'Road Images'));
-          // finally: details table without id/pics/name/district (redundant)
-          panel.appendChild(objToTable(payload.road, ['name','district']));
+          if (pics.length) panel.appendChild(makeGallery(pics, '🖼️ Road Images'));
+          // metadata (collapsed by default)
+          panel.appendChild(makeMetadataSection(payload.road));
+          // finally: details table (excludes metadata keys & common repeats)
+          panel.appendChild(objToTable(payload.road, ['name']));
           openDrawer(payload.road.name || 'Road', panel, {
             id: payload.road?.id,
             district: payload.road?.district ?? payload.road?.district_code ?? payload.road?.district_name
@@ -1625,11 +1732,17 @@ function decorateWithPointerArrow(pointFeature) {
             }
           }
           const panel = document.createElement('div');
-          // asset images first (now normalized)
+
+          // 1) Images (collapsible, open)
           const pics = normalizePics(asset);
-          if (pics.length) panel.appendChild(makeGallery(pics, 'Asset Images'));
-          // hide id/pics/district (redundant)
-          panel.appendChild(objToTable(asset, ['district']));
+          panel.appendChild(makeGallery(pics, 'Images'));
+
+          // 2) Metadata (collapsible, closed by default)
+          panel.appendChild(makeMetadataSection(asset));
+
+          // 3) (Optional) keep the full details table if you still want it
+          panel.appendChild(objToTable(asset));
+
           openDrawer(`${(asset.type || 'Asset').toString().toUpperCase()}`, panel, {
             id: asset.id,
             district: asset.district ?? asset.district_code ?? asset.district_name

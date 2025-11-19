@@ -80,6 +80,32 @@
       layer.setVisible(on);
     });
 
+    // Center icon button – fit map view to this layer's extent
+    const centerBtn = document.createElement('button');
+    centerBtn.type = 'button';
+    centerBtn.className = 'layer-center-btn';
+    centerBtn.setAttribute('title', 'Center map on layer');
+
+    centerBtn.addEventListener('click', async () => {
+      try {
+        const map = await ensureMap();
+        if (!map || !layer || !layer.getSource) return;
+        const src = layer.getSource();
+        if (!src || !src.getExtent) return;
+        const extent = src.getExtent();
+        if (!extent || !isFinite(extent[0])) return;
+
+        map.getView().fit(extent, {
+          duration: 450,
+          padding: [40, 40, 40, 40],
+          maxZoom: 18,
+        });
+      } catch (e) {
+        console.warn('fit failed for user layer', e);
+      }
+    });
+
+    // Delete icon button
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
     delBtn.className = 'layer-delete-btn';
@@ -98,8 +124,14 @@
       row.remove();
     });
 
+    // Right-aligned actions wrapper: Center + Delete
+    const actions = document.createElement('div');
+    actions.className = 'layer-row-actions';
+    actions.appendChild(centerBtn);
+    actions.appendChild(delBtn);
+
     row.appendChild(label);
-    row.appendChild(delBtn);
+    row.appendChild(actions);
     layerTogglesEl.appendChild(row);
   }
 

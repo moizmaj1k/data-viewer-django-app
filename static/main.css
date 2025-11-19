@@ -378,6 +378,14 @@ body.drawer-open #map {
   gap: 6px;
 }
 
+/* Group action buttons tight on the right (edit / center / delete) */
+.marker-row-actions,
+.layer-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* Clickable label (toggle + name) */
 .map-layers-panel .marker-toggle,
 .map-layers-panel .layer-toggle {
@@ -465,24 +473,75 @@ body.drawer-open #map {
   content: "🗺️";
 }
 
-/* Delete icon buttons for rows */
+.marker-row.is-editing {
+  background: #fef2f2; /* soft reddish highlight */
+  border-radius: 4px;
+}
+
+/* Pill shows "editing" state when row is editing */
+.marker-row.is-editing .marker-toggle-pill {
+  background: #fee2e2;
+  border-color: #ef4444;
+  width: auto;
+  min-width: 60px;
+}
+
+.marker-row.is-editing .marker-toggle-pill::after {
+  display: none; /* hide the little knob */
+}
+
+.marker-row.is-editing .marker-toggle-pill::before {
+  content: "editing";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+/* Icon buttons: edit / delete / center – larger 24x24 size */
+.marker-edit-btn,
 .marker-delete-btn,
-.layer-delete-btn {
+.layer-delete-btn,
+.marker-center-btn,
+.layer-center-btn {
   border: 0;
   background: transparent;
   cursor: pointer;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   flex-shrink: 0;
   background-repeat: no-repeat;
   background-position: center;
-  background-size: 12px 12px;
+  background-size: 18px 18px;
+}
+
+/* Edit icon button uses static/edit-marker.png */
+.marker-edit-btn {
+  background-image: url("/static/edit-marker.png");
+}
+
+/* Delete icon buttons for rows */
+.marker-delete-btn,
+.layer-delete-btn {
   background-image: url("/static/delete-icon.png"); /* update path if needed */
 }
 
+/* Center icon (place your PNG at this path or update it) */
+.marker-center-btn,
+.layer-center-btn {
+  background-image: url("/static/center-icon.png");
+}
+
+.marker-edit-btn:hover,
 .marker-delete-btn:hover,
-.layer-delete-btn:hover {
+.layer-delete-btn:hover,
+.marker-center-btn:hover,
+.layer-center-btn:hover {
   filter: brightness(0.9);
 }
 

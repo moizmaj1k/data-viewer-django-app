@@ -13,6 +13,96 @@
     const markersSource = new ol.source.Vector();
     const markersLayer = new ol.layer.Vector({ source: markersSource, zIndex: 60 });
     map.addLayer(markersLayer);
+
+    // --- Layer + helpers for edit highlight ripple around the active marker ---
+    const editHighlightSource = new ol.source.Vector();
+    const editHighlightLayer = new ol.layer.Vector({
+      source: editHighlightSource,
+      zIndex: 59, // just beneath the main marker icon
+    });
+    map.addLayer(editHighlightLayer);
+
+    let editHighlightFeature = null;
+    let editHighlightTimer = null;
+
+    function clearEditHighlight() {
+      if (editHighlightTimer) {
+        clearInterval(editHighlightTimer);
+        editHighlightTimer = null;
+      }
+      editHighlightSource.clear();
+      editHighlightFeature = null;
+    }
+
+    function startEditHighlightForFeature(feature) {
+      clearEditHighlight();
+      if (!feature || !feature.getGeometry) return;
+      const geom = feature.getGeometry();
+      if (!geom || !(geom instanceof ol.geom.Point)) return;
+
+      // Share the same geometry so the ripple follows when marker is dragged
+      editHighlightFeature = new ol.Feature({ geometry: geom });
+      editHighlightSource.addFeature(editHighlightFeature);
+
+      // Multiple outward ripples radiating from the point
+      let phase = 0;
+      const baseRadius = 10;
+      const maxRadius = 40;
+      const ringCount = 3;
+      const ringGap = 7;
+
+      editHighlightTimer = setInterval(() => {
+        if (!editHighlightFeature) return;
+
+        // Move the wave forward
+        phase = (phase + 1) % (maxRadius - baseRadius);
+        const start = baseRadius + phase;
+
+        const styles = [];
+        for (let i = 0; i < ringCount; i++) {
+          const r = start + i * ringGap;
+          if (r > maxRadius) continue;
+
+          const strokeAlpha = 0.9 - i * 0.25; // fade outer rings
+          const fillAlpha = 0.30 - i * 0.10;
+
+          styles.push(
+            new ol.style.Style({
+              image: new ol.style.Circle({
+                radius: r,
+                stroke: new ol.style.Stroke({
+                  color: `rgba(239,68,68,${Math.max(strokeAlpha, 0)})`,
+                  width: 2,
+                }),
+                fill: new ol.style.Fill({
+                  color: `rgba(254,226,226,${Math.max(fillAlpha, 0)})`,
+                }),
+              }),
+            })
+          );
+        }
+
+        editHighlightFeature.setStyle(styles);
+      }, 70);
+    }
+
+    // --- Shared Translate interaction for editing marker positions ---
+    const dragFeatures = new ol.Collection();
+    const translateInteraction = new ol.interaction.Translate({ features: dragFeatures });
+    translateInteraction.setActive(false);
+    map.addInteraction(translateInteraction);
+
+    let activeEditId = null;
+
+    // When a drag finishes, we can log the new position (and later persist it if needed)
+    translateInteraction.on('translateend', (evt) => {
+      const f = evt.features.item(0);
+      if (!f) return;
+      const geom = f.getGeometry && f.getGeometry();
+      if (!geom || !(geom instanceof ol.geom.Point)) return;
+      const [lon, lat] = ol.proj.toLonLat(geom.getCoordinates());
+      console.log('Marker moved to:', lat.toFixed(6), lon.toFixed(6));
+    });
     // --- Simple popup for marker clicks (lat/lon + copy) ---
     const popupEl = document.createElement('div');
     popupEl.className = 'marker-popup';
@@ -145,6 +235,44 @@
         rec.feature.setStyle(on ? rec.style : hiddenStyle);
       });
 
+      // Edit icon button – enable/disable drag of this marker
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'marker-edit-btn';
+      editBtn.setAttribute('title', 'Move marker');
+      // editBtn.textContent = '✏️'; // or swap for an <img> icon if you prefer
+
+      editBtn.addEventListener('click', () => {
+        const rec = registry.get(id);
+        if (!rec) return;
+
+        const isSame = activeEditId === id;
+
+        // Toggle OFF if already editing this marker
+        if (isSame) {
+          activeEditId = null;
+          dragFeatures.clear();
+          translateInteraction.setActive(false);
+          row.classList.remove('is-editing');
+          clearEditHighlight();
+          hideMarkerPopup(); // optional: also hide popup when done editing
+          return;
+        }
+
+        // Switch edit mode to this marker
+        activeEditId = id;
+        dragFeatures.clear();
+        dragFeatures.push(rec.feature);
+        translateInteraction.setActive(true);
+        startEditHighlightForFeature(rec.feature);
+
+        // Optional visual state for the active row
+        document
+          .querySelectorAll('.marker-row.is-editing')
+          .forEach(r => r.classList.remove('is-editing'));
+        row.classList.add('is-editing');
+      });
+
       // Delete icon button
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
@@ -158,11 +286,48 @@
           try { src.removeFeature(rec.feature); } catch (e) { console.warn('remove marker failed', e); }
         }
         registry.delete(id);
+        // If this marker was being edited, stop the interaction
+        if (activeEditId === id) {
+          activeEditId = null;
+          dragFeatures.clear();
+          translateInteraction.setActive(false);
+          clearEditHighlight();
+          hideMarkerPopup();
+        }
         row.remove();
       });
 
+      // Center icon button – center map on this marker and show popup
+      const centerBtn = document.createElement('button');
+      centerBtn.type = 'button';
+      centerBtn.className = 'marker-center-btn';
+      centerBtn.setAttribute('title', 'Center map on marker');
+
+      centerBtn.addEventListener('click', () => {
+        const rec = registry.get(id);
+        if (!rec) return;
+        const geom = rec.feature.getGeometry && rec.feature.getGeometry();
+        if (!geom || !(geom instanceof ol.geom.Point)) return;
+        const coord = geom.getCoordinates();
+        try {
+          map.getView().animate({
+            center: coord,
+            duration: 400,
+            zoom: Math.max(12, map.getView().getZoom() || 10),
+          });
+        } catch {}
+        showMarkerPopup(rec.feature);
+      });
+
+      // Right-aligned actions wrapper so Edit / Center / Delete sit together
+      const actions = document.createElement('div');
+      actions.className = 'marker-row-actions';
+      actions.appendChild(editBtn);
+      actions.appendChild(centerBtn);
+      actions.appendChild(delBtn);
+
       row.appendChild(label);
-      row.appendChild(delBtn);
+      row.appendChild(actions);
       toggles.appendChild(row);
     }
 

@@ -13,24 +13,91 @@
     const markersSource = new ol.source.Vector();
     const markersLayer = new ol.layer.Vector({ source: markersSource, zIndex: 60 });
     map.addLayer(markersLayer);
+    // --- Simple popup for marker clicks (lat/lon + copy) ---
+    const popupEl = document.createElement('div');
+    popupEl.className = 'marker-popup';
+    popupEl.innerHTML = `
+      <div class="marker-popup-inner">
+        <div class="marker-popup-row">
+          <span class="marker-popup-label">Lat, Lon</span>
+          <span class="marker-popup-value"></span>
+        </div>
+        <button type="button" class="marker-popup-copy" title="Copy coordinates">📋</button>
+      </div>
+    `;
+    const popupValueEl = popupEl.querySelector('.marker-popup-value');
+    const popupCopyBtn = popupEl.querySelector('.marker-popup-copy');
 
-    // Style helper: black text on white pill, small black dot anchor
+    // Attach popup to the map viewport so it moves with the map
+    map.getViewport().appendChild(popupEl);
+
+    const popupOverlay = new ol.Overlay({
+      element: popupEl,
+      positioning: 'bottom-center',
+      stopEvent: false,
+      offset: [0, -10],
+    });
+    map.addOverlay(popupOverlay);
+
+    function hideMarkerPopup() {
+      popupOverlay.setPosition(undefined);
+    }
+
+    function showMarkerPopup(feature) {
+      const geom = feature.getGeometry && feature.getGeometry();
+      if (!geom || !(geom instanceof ol.geom.Point)) return;
+      const coord = geom.getCoordinates();
+      const [lon, lat] = ol.proj.toLonLat(coord);
+      const latStr = lat.toFixed(6);
+      const lonStr = lon.toFixed(6);
+      const combined = `${latStr}, ${lonStr}`;
+
+      if (popupValueEl) {
+        popupValueEl.textContent = combined;
+        popupValueEl.dataset.lat = latStr;
+        popupValueEl.dataset.lon = lonStr;
+      }
+      popupOverlay.setPosition(coord);
+    }
+
+    if (popupCopyBtn && popupValueEl) {
+      popupCopyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const text = popupValueEl.textContent || '';
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const old = popupCopyBtn.textContent;
+          popupCopyBtn.textContent = '📋 ✓';
+          setTimeout(() => { popupCopyBtn.textContent = old; }, 1200);
+        } catch (err) {
+          console.warn('Clipboard copy failed', err);
+        }
+      });
+    }
+
+    // keep a reference so we can remove features on delete
+    window.__USER_MARKERS_SOURCE__ = markersSource;
+
+    // Style helper: marker.png icon + label text (minimal background, like other labels)
     function markerStyle(name) {
       return new ol.style.Style({
-        image: new ol.style.Circle({
-          radius: 5,
-          fill: new ol.style.Fill({ color: '#111' }),
-          stroke: new ol.style.Stroke({ color: '#000', width: 1 })
+        image: new ol.style.Icon({
+          src: '/static/marker.png',           // your marker icon
+          anchor: [0.5, 1],                    // bottom-center anchor
+          anchorXUnits: 'fraction',
+          anchorYUnits: 'fraction',
+          scale: 0.9                           // tweak if icon looks too big/small
         }),
         text: new ol.style.Text({
           text: String(name || ''),
           font: '600 12px system-ui, Segoe UI, Roboto, Arial, sans-serif',
-          fill: new ol.style.Fill({ color: '#111' }),
-          stroke: new ol.style.Stroke({ color: '#ffffff', width: 2 }),
-          backgroundFill: new ol.style.Fill({ color: '#fff' }),
-          backgroundStroke: new ol.style.Stroke({ color: '#111', width: 1 }),
-          padding: [2, 6, 2, 6],
-          offsetY: -16
+          fill: new ol.style.Fill({ color: '#111827' }),
+          stroke: new ol.style.Stroke({
+            color: 'rgba(255,255,255,0.95)',   // soft white halo, no solid box
+            width: 3
+          }),
+          offsetY: -50                         // lift text slightly above the icon
         })
       });
     }
@@ -41,26 +108,64 @@
     // Registry
     const registry = new Map(); // id -> { feature, name, style }
 
-    // UI: toggles container
+    // UI: toggles container (Map Items panel)
     const toggles = document.getElementById('marker-toggles');
 
     function addToggleRow(id, name) {
       if (!toggles) return;
-      const row = document.createElement('label');
-      row.className = 'check'; // reuse your list/check styling
+
+      const row = document.createElement('div');
+      row.className = 'marker-row';
       row.dataset.mid = id;
-      row.innerHTML = `
-        <input type="checkbox" checked>
-        <span>${name}</span>
-      `;
-      const cb = row.querySelector('input[type="checkbox"]');
+
+      const label = document.createElement('label');
+      label.className = 'marker-toggle';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.value = id;
+
+      const pill = document.createElement('span');
+      pill.className = 'toggle-pill marker-toggle-pill is-on';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'marker-name';
+      nameSpan.textContent = name; // "📍" emoji is injected via CSS
+
+      label.appendChild(cb);
+      label.appendChild(pill);
+      label.appendChild(nameSpan);
+
       cb.addEventListener('change', () => {
         const rec = registry.get(id);
         if (!rec) return;
-        rec.feature.setStyle(cb.checked ? rec.style : hiddenStyle);
+        const on = cb.checked;
+        pill.classList.toggle('is-on', on);
+        rec.feature.setStyle(on ? rec.style : hiddenStyle);
       });
+
+      // Delete icon button
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'marker-delete-btn';
+      delBtn.setAttribute('title', 'Delete marker');
+
+      delBtn.addEventListener('click', () => {
+        const rec = registry.get(id);
+        const src = window.__USER_MARKERS_SOURCE__;
+        if (rec && src) {
+          try { src.removeFeature(rec.feature); } catch (e) { console.warn('remove marker failed', e); }
+        }
+        registry.delete(id);
+        row.remove();
+      });
+
+      row.appendChild(label);
+      row.appendChild(delBtn);
       toggles.appendChild(row);
     }
+
 
     // Create a marker feature
     let COUNTER = 0;
@@ -79,6 +184,28 @@
       addToggleRow(id, name);
       return id;
     }
+
+    // On map click: if a user marker is hit, show popup with lat/lon; otherwise hide
+    map.on('singleclick', (evt) => {
+      let found = null;
+      map.forEachFeatureAtPixel(
+        evt.pixel,
+        (feature, layer) => {
+          if (layer === markersLayer) {
+            found = feature;
+            return true;
+          }
+          return false;
+        },
+        { hitTolerance: 5 }
+      );
+
+      if (found) {
+        showMarkerPopup(found);
+      } else {
+        hideMarkerPopup();
+      }
+    });
 
     // --- Modal (build dynamically, reuse .layer-modal look)
     const trigger = document.getElementById('btn-add-marker');

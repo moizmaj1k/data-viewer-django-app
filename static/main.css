@@ -35,10 +35,10 @@ body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-seri
   height: 34px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; background: white;
 }
 
-.page {
+/* .page {
   height: calc(100vh - var(--topbar-h));
   display: flex; flex-direction: column;
-}
+} */
 #map {
   flex: 1 1 auto;
   width: 98.6%;
@@ -116,6 +116,25 @@ body.drawer-open #map {
   color: #000000;                 /* small touch on hover */
 }
 
+/* Make Add Layer and Add Marker look identical and compact */
+#btn-add-layer,
+#btn-add-marker {
+  padding: 6px 10px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Compact Apply / Reset buttons */
+.filters-actions .btn-solid,
+.filters-actions .btn-warning {
+  padding: 5px 10px !important;   /* reduced from 8px 14px */
+  font-size: 11px !important;
+}
+
+
 .sep {
   width: 1px;
   height: 20px;
@@ -128,8 +147,361 @@ body.drawer-open #map {
 .page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px);
+  height: calc(100vh - var(--topbar-h));
+  /* All outer spacing lives here now */
+  padding: 0 4px;
+  box-sizing: border-box;
 }
+
+/* Filters toggle (label + switch) in the top toolbar */
+.filters-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.filters-toggle-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+/* Switch button shell */
+.filters-toggle-switch {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Track of the switch */
+.filters-toggle-switch .fts-track {
+  width: 38px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: background var(--fx-fast) var(--fx-ease);
+}
+
+/* Knob of the switch */
+.filters-toggle-switch .fts-knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #9ca3af;
+  transform: translateX(0);
+  transition:
+    transform var(--fx-fast) var(--fx-ease),
+    background var(--fx-fast) var(--fx-ease);
+}
+
+/* ON state when filters are open: aria-expanded = true */
+.filters-toggle-switch[aria-expanded="true"] .fts-track {
+  background: #1d4ed8;
+}
+
+.filters-toggle-switch[aria-expanded="true"] .fts-knob {
+  transform: translateX(18px);
+  background: #ffffff;
+}
+
+/* Layers icon in map overlay button */
+.map-layers-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+/* Small layers icon button over the map (top-right) */
+.map-layers-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 15;
+  border: 1px solid #cfd3d8;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-layers-toggle:hover {
+  background: #f3f4f6;
+}
+
+/* Floating panel for layers & markers */
+.map-layers-panel {
+  position: absolute;
+  top: 40px;          /* just below the button */
+  right: 10px;
+  z-index: 14;
+  width: 260px;
+  max-height: 260px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  padding: 8px;
+  display: none;      /* hidden by default */
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.map-layers-panel.open {
+  display: flex;
+}
+
+/* Popup for user markers (lat/lon + copy) */
+.marker-popup {
+  position: absolute;
+  background: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  padding: 4px 6px;
+  font-size: 11px;
+  color: #111827;
+  pointer-events: auto;
+}
+
+.marker-popup-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.marker-popup-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.marker-popup-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  font-size: 10px;
+}
+
+.marker-popup-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.marker-popup-copy {
+  border: 0;
+  background: #e5e7eb;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.marker-popup-copy:hover {
+  background: #d1d5db;
+}
+
+.mlp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mlp-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4b5563;
+}
+
+.mlp-close {
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: #6b7280;
+  border-radius: 4px;
+}
+
+.mlp-close:hover {
+  background: #f3f4f6;
+}
+
+.mlp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mlp-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+}
+
+/* Shared styles for layer / marker lists in the Map Items panel */
+.map-layers-panel .layer-toggles,
+.map-layers-panel .marker-toggles {
+  max-height: 90px;
+  overflow-y: auto;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Row wrappers */
+.map-layers-panel .marker-row,
+.map-layers-panel .layer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* Clickable label (toggle + name) */
+.map-layers-panel .marker-toggle,
+.map-layers-panel .layer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.map-layers-panel .marker-toggle:hover,
+.map-layers-panel .layer-toggle:hover {
+  background: #f9fafb;
+}
+
+/* Hide the native checkbox; we use the pill as the visible control */
+.map-layers-panel .marker-toggle input[type="checkbox"],
+.map-layers-panel .layer-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Tiny rectangular toggle pill */
+.toggle-pill {
+  width: 24px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background var(--fx-fast) var(--fx-ease),
+    border-color var(--fx-fast) var(--fx-ease);
+}
+
+.toggle-pill::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #9ca3af;
+  transition:
+    transform var(--fx-fast) var(--fx-ease),
+    background var(--fx-fast) var(--fx-ease);
+}
+
+.toggle-pill.is-on {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.toggle-pill.is-on::after {
+  transform: translateX(10px);
+  background: #ffffff;
+}
+
+/* Hooks if we ever want per-type styling later */
+.marker-toggle-pill {}
+.layer-toggle-pill {}
+
+/* Icon + name text */
+.map-layers-panel .marker-name,
+.map-layers-panel .layer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Inject emoji icons before the text, just like before */
+.map-layers-panel .marker-name::before {
+  content: "📍";
+}
+
+.map-layers-panel .layer-name::before {
+  content: "🗺️";
+}
+
+/* Delete icon buttons for rows */
+.marker-delete-btn,
+.layer-delete-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  flex-shrink: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+  background-image: url("/static/delete-icon.png"); /* update path if needed */
+}
+
+.marker-delete-btn:hover,
+.layer-delete-btn:hover {
+  filter: brightness(0.9);
+}
+
+/* (Optional) if you ever add a locate button again, keep it compact */
+.mlp-locate-btn {
+  border: 0;
+  background: #e5e7eb;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mlp-locate-btn:hover {
+  background: #d1d5db;
+}
+
 
 /* Filters panel (collapsible with smooth animation) */
 .filters-panel {
@@ -137,7 +509,7 @@ body.drawer-open #map {
   background: #ffffff;
   /* border-bottom: 1px solid #e5e7eb; */
   border: 1px solid #c2bccc;       /* black border */
-  border-radius: 12px;          /* curved edges */
+  border-radius: 6px;          /* curved edges */
   margin: 0 var(--drawer-gap);  /* side margins always; no vertical gap when closed */
   max-height: 0;
   opacity: 0;
@@ -147,16 +519,85 @@ body.drawer-open #map {
     opacity   var(--fx-fast) ease,
     margin    var(--fx-slow) var(--fx-ease);
 }
+/* Apply / Reset area – compact and wraps nicely on smaller screens */
 .filters-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  margin-top: 2px;
+
+  /* NEW: force it to be on its own row under all fields */
+  grid-column: 1 / -1;
+  justify-content: flex-start;
 }
 /* .filters-panel.open {
   max-height: 320px; 
   opacity: 1;
   overflow: visible; 
 } */
+
+/* Middle vertical separator – visible “physical” divider */
+.filters-separator {
+  flex: 0 0 auto;
+  width: 1px;
+  background: #e5e7eb;
+  margin: 0 2px;
+}
+
+/* Right side: Map Tools – takes the other 50% */
+.filters-tools {
+  flex: 0 0 50%;
+  max-width: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;               /* keep tools compact so height doesn’t grow */
+}
+
+.filters-tools-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  margin-bottom: 6px;   /* 👈 add this */
+}
+
+.filters-tools-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Compact Map Tools buttons (Add Layer & Add Marker) */
+#btn-add-layer,
+#btn-add-marker {
+  padding: 5px 10px !important;   /* smaller padding */
+  font-size: 12px !important;     /* same font size */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px !important;
+  line-height: 1;
+}
+
+
+/* Responsive: stack columns on smaller widths */
+@media (max-width: 640px) {
+  .filters-inner {
+    flex-direction: column;
+  }
+  .filters-separator {
+    display: none;
+  }
+  .filters-tools {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+}
+
+
 .filters-panel.open {
   max-height: 320px; /* adjust if your form is taller */
   opacity: 1;
@@ -165,14 +606,26 @@ body.drawer-open #map {
   margin: var(--topbar-gap) var(--topbar-gap) 0 var(--topbar-gap);
 }
 
-.filters-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-  align-items: end;
-  padding: 10px 12px;
+/* Filters panel layout: left (data filters) + right (Map Tools) */
+.filters-inner {
+  display: flex;
+  align-items: stretch;   /* both sides same height */
+  gap: 8px;
+  padding: 4px 8px;       /* slightly smaller padding to save height */
 }
-.field { display: grid; gap: 6px; }
+
+
+/* Left side: existing filters – exactly 50% width */
+.filters-form {
+  flex: 0 0 50%;
+  max-width: 50%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px;               /* small gap to keep box height low */
+  align-items: end;
+  padding: 0;
+}
+.field { display: grid; gap: 4px; }
 .field > span { font-size: 12px; color: #374151; }
 
 .filters-form select {
@@ -267,13 +720,34 @@ body.drawer-open #map {
   /* space around the map */
   margin: var(--map-outer-gap);
   /* rounded corners + proper clipping for OL canvases */
-  border-radius: 12px;          /* “slightly curved” */
+  border-radius: 6px;          /* “slightly curved” */
   border: 1px solid #c2bccc;       /* black border */
   overflow: hidden;             /* ensures tiles respect the radius */
   /* optional subtle depth */
   box-shadow: 0 6px 24px rgba(0,0,0,0.08);
   background: #f7f7f9;          /* visible while tiles load */
 }
+
+/* Small layers icon button over the map (top-right) */
+.map-layers-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  border: 1px solid #cfd3d8;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.map-layers-toggle:hover {
+  background: #f3f4f6;
+}
+
 
 /* Right drawer */
 .drawer {
@@ -286,7 +760,7 @@ body.drawer-open #map {
   background: #fff;
   border: 1px solid #c2bccc;
   border-left-width: 1px;
-  border-radius: 12px;      /* slightly curved edges */
+  border-radius: 6px;      /* slightly curved edges */
   overflow: hidden;         /* clip inner content to radius */
   box-shadow: -8px 0 24px rgba(0,0,0,0.08);
   transform: translateX(calc(100% + var(--drawer-gap)));

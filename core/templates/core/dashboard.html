@@ -31,37 +31,32 @@
       <button type="button" class="btn btn-outline" data-basemap="osm" title="OpenStreetMap">OSM</button>
     </div>
 
-    <!-- Divider -->
     <span class="sep"></span>
 
-    <!-- Add Layer icon button -->
-    <button id="btn-add-layer" class="btn btn-outline" type="button" aria-haspopup="dialog" aria-controls="layer-modal" title="Add Layer to Map">
-      ➕🗺️
-    </button>
-    <!-- Live toggles for uploaded layers -->
-    <div id="layer-toggles" class="layer-toggles" aria-label="Map layers"></div>
-
-    <!-- Add Marker icon button -->
-    <button id="btn-add-marker" class="btn btn-outline" type="button" aria-haspopup="dialog" aria-controls="marker-modal">
-      📍 Add marker
-    </button>
-    <!-- Live toggles for user markers -->
-    <div id="marker-toggles" class="layer-toggles" aria-label="Map markers"></div>
-    
-    <!-- Divider -->
-    <span class="sep"></span>
-
-    <!-- Filters toggle -->
-    <button id="btn-filters" class="btn btn-solid" type="button" aria-expanded="false" title="Show/Hide Filters">
-      Filters
-    </button>
+    <!-- Filters toggle: label + switch -->
+    <div class="filters-toggle">
+      <span class="filters-toggle-label">Filters</span>
+      <button
+        id="btn-filters"
+        class="filters-toggle-switch"
+        type="button"
+        aria-expanded="false"
+        title="Show/Hide Filters"
+      >
+        <span class="fts-track">
+          <span class="fts-knob"></span>
+        </span>
+      </button>
+    </div>
   </div>
 {% endblock %}
 
 {% block content %}
 
-  <!-- Collapsible filters panel (hidden by default) -->
-  <section id="filters-panel" class="filters-panel" aria-hidden="true">
+<!-- Collapsible filters panel (hidden by default) -->
+<section id="filters-panel" class="filters-panel" aria-hidden="true">
+  <div class="filters-inner">
+    <!-- LEFT: existing data filters -->
     <form id="filters-form" class="filters-form" onsubmit="return false;">
 
       <!-- District (label shows name, value is district code) -->
@@ -82,7 +77,7 @@
           </button>
           <div class="ms-panel" role="dialog" aria-hidden="true">
             <div class="ms-search">
-              <input type="text" id="roads-search" placeholder="Search roads...">
+              <input type="text" id="roads-search" placeholder="Search roads.">
             </div>
             <div class="ms-list" id="roads-list">
               <!-- checkboxes injected here -->
@@ -134,10 +129,70 @@
         <button id="btn-reset" type="button" class="btn btn-warning">Reset Filters</button>
       </div>
     </form>
-  </section>
+
+    <!-- Middle vertical separator -->
+    <div class="filters-separator" aria-hidden="true"></div>
+
+    <!-- RIGHT: Map Tools (Add Layer / Add Marker now live here) -->
+    <div class="filters-tools">
+      <span class="filters-tools-label">Map Tools</span>
+
+      <div class="filters-tools-row">
+        <!-- Add Layer icon button (same IDs/classes as before) -->
+        <button id="btn-add-layer" class="btn btn-outline" type="button"
+                aria-haspopup="dialog" aria-controls="layer-modal" title="Add Layer to Map">
+          ➕🗺️ Add Layer
+        </button>
+      </div>
+
+      <div class="filters-tools-row">
+        <!-- Add Marker icon button (same IDs/classes as before) -->
+        <button id="btn-add-marker" class="btn btn-outline" type="button"
+                aria-haspopup="dialog" aria-controls="marker-modal" title="Add Marker to Map">
+          ➕📍 Add Marker
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
 
   <!-- Map container -->
-  <div id="map"></div>
+  <div id="map">
+    <!-- Map Layers icon button (top-right overlay) -->
+    <button
+      id="map-layers-toggle"
+      class="map-layers-toggle"
+      type="button"
+      title="Map layers & markers"
+      aria-expanded="false"
+      aria-controls="map-layers-panel"
+    >
+      <img src="{% static 'layers.png' %}" alt="Layers" class="map-layers-icon">
+    </button>
+
+    <!-- Map Layers / Markers panel -->
+    <div id="map-layers-panel" class="map-layers-panel" aria-hidden="true">
+      <div class="mlp-head">
+        <span class="mlp-title">Map Items</span>
+        <button type="button" id="map-layers-close" class="mlp-close" aria-label="Close">×</button>
+      </div>
+
+      <div class="mlp-section">
+        <div class="mlp-section-title">Layers</div>
+        <!-- moved here: JS will still populate this by ID -->
+        <div id="layer-toggles" class="layer-toggles"></div>
+      </div>
+
+      <div class="mlp-section">
+        <div class="mlp-section-title">Markers</div>
+        <!-- moved here: JS will still populate this by ID -->
+        <div id="marker-toggles" class="marker-toggles"></div>
+      </div>
+    </div>
+  </div>
+
+
 
   <!-- Right detail drawer -->
   <aside id="detail-drawer" class="drawer" aria-hidden="true">

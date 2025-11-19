@@ -42,18 +42,67 @@
       fr.readAsText(file);
     });
   }
+  const userLayers = new Map(); // id -> ol.layer.Vector
   const layerTogglesEl = $('#layer-toggles'); // pills in top bar
 
   function addLayerToggleChip(layer, name) {
     if (!layerTogglesEl) return;
+
     const id = `layer-${Math.random().toString(36).slice(2,8)}`;
-    const chip = document.createElement('label');
-    chip.className = 'layer-chip';
-    chip.innerHTML = `<input type="checkbox" id="${id}" checked /> <span>${name}</span>`;
-    const cb = chip.querySelector('input');
-    cb.addEventListener('change', () => layer.setVisible(cb.checked));
-    layerTogglesEl.appendChild(chip);
+    userLayers.set(id, layer);
+
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    row.dataset.layerId = id;
+
+    const label = document.createElement('label');
+    label.className = 'layer-toggle';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.dataset.layerId = id;
+
+    const pill = document.createElement('span');
+    pill.className = 'toggle-pill layer-toggle-pill is-on';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'layer-name';
+    nameSpan.textContent = name; // "🗺️" emoji is injected via CSS
+
+    label.appendChild(cb);
+    label.appendChild(pill);
+    label.appendChild(nameSpan);
+
+    cb.addEventListener('change', () => {
+      const on = cb.checked;
+      pill.classList.toggle('is-on', on);
+      layer.setVisible(on);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'layer-delete-btn';
+    delBtn.setAttribute('title', 'Remove layer');
+
+    delBtn.addEventListener('click', async () => {
+      try {
+        const map = await ensureMap();
+        if (map && layer) {
+          map.removeLayer(layer);
+        }
+      } catch (e) {
+        console.warn('remove layer failed', e);
+      }
+      userLayers.delete(id);
+      row.remove();
+    });
+
+    row.appendChild(label);
+    row.appendChild(delBtn);
+    layerTogglesEl.appendChild(row);
   }
+
 
   function addVectorLayerFromFeatures(map, features, nameHint) {
     if (!features || features.length === 0) {

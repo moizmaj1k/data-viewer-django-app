@@ -67,8 +67,13 @@
   const btnApply      = document.getElementById("btn-apply");
   const btnReset      = document.getElementById("btn-reset");
 
-  const btnFilters    = document.getElementById("btn-filters");
-  const filtersPanel  = document.getElementById("filters-panel");
+  const btnFilters     = document.getElementById("btn-filters");
+  const filtersPanel   = document.getElementById("filters-panel");
+
+  // Map overlay: layers button + panel
+  const mapLayersToggle = document.getElementById("map-layers-toggle");
+  const mapLayersPanel  = document.getElementById("map-layers-panel");
+  const mapLayersClose  = document.getElementById("map-layers-close");
 
   const basemapButtons = document.querySelectorAll('[data-basemap]');
 
@@ -367,6 +372,45 @@
     document.documentElement.style.setProperty('--filters-h', `${rectH + mt + mb}px`);
   }
 
+  // --- Map Layers panel (top-right overlay) ---
+  function setMapLayersPanelOpen(open) {
+    if (!mapLayersPanel || !mapLayersToggle) return;
+    if (open) {
+      mapLayersPanel.classList.add('open');
+      mapLayersPanel.setAttribute('aria-hidden', 'false');
+      mapLayersToggle.setAttribute('aria-expanded', 'true');
+    } else {
+      mapLayersPanel.classList.remove('open');
+      mapLayersPanel.setAttribute('aria-hidden', 'true');
+      mapLayersToggle.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  if (mapLayersToggle && mapLayersPanel) {
+    mapLayersToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = mapLayersPanel.classList.contains('open');
+      setMapLayersPanelOpen(!isOpen);
+    });
+  }
+
+  if (mapLayersClose && mapLayersPanel) {
+    mapLayersClose.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMapLayersPanelOpen(false);
+    });
+  }
+
+  // Close the map-layers panel when clicking outside it
+  document.addEventListener('click', (e) => {
+    if (!mapLayersPanel || !mapLayersToggle) return;
+    if (!mapLayersPanel.classList.contains('open')) return;
+    const inPanel = mapLayersPanel.contains(e.target);
+    const onButton = mapLayersToggle.contains(e.target);
+    if (!inPanel && !onButton) {
+      setMapLayersPanelOpen(false);
+    }
+  });
 
 
   function setFiltersOpen(open) {

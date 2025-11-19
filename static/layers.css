@@ -65,9 +65,7 @@
 .file-btn input[type="file"]{ display:none; }
 
 /* --- Top bar layer toggles --- */
-.layer-toggles{
-  display:flex; gap:10px; align-items:center; margin-left:8px; flex-wrap:wrap;
-}
+
 #btn-add-layer,
 .layer-chip {
   border: 1px solid #cfd3d8;

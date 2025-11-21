@@ -67,6 +67,35 @@
   const btnApply      = document.getElementById("btn-apply");
   const btnReset      = document.getElementById("btn-reset");
 
+    // --- "Stick current selection" checkbox, shown beside Reset ---
+  const filtersActions = document.querySelector('.filters-actions');
+  let stickSelectionCheckbox = null;
+
+  if (filtersActions && btnReset) {
+    const label = document.createElement('label');
+    label.className = 'stick-selection';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = 'stick-selection';
+
+    const span = document.createElement('span');
+    span.textContent = 'Stick current selection';
+
+    label.appendChild(cb);
+    label.appendChild(span);
+
+    // Insert immediately after the Reset button so it appears "beside" it
+    filtersActions.insertBefore(label, btnReset.nextSibling);
+
+    stickSelectionCheckbox = cb;
+  }
+
+  function isStickSelectionOn() {
+    return !!(stickSelectionCheckbox && stickSelectionCheckbox.checked);
+  }
+
+
   const btnFilters     = document.getElementById("btn-filters");
   const filtersPanel   = document.getElementById("filters-panel");
 
@@ -294,7 +323,16 @@
   // Make a dimmed version of a point style (keep label)
   function dimPointStyle(name) {
     return new ol.style.Style({
-      image: dot(NEON.dimPt, 6),
+      image: new ol.style.Circle({
+        radius: 6,
+        // dimmed fill
+        fill: new ol.style.Fill({ color: NEON.dimPt }),
+        // dimmed border as well (so it doesn't look fully active)
+        stroke: new ol.style.Stroke({
+          color: 'rgba(17,17,17,0.25)', // soft, semi-transparent dark border
+          width: 1
+        })
+      }),
       text: name ? new ol.style.Text({
         text: String(name),
         font: '600 12px system-ui, Segoe UI, Roboto, Arial, sans-serif',
@@ -1071,7 +1109,9 @@ function decorateWithPointerArrow(pointFeature) {
   // ---------- Apply / Reset ----------
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    clearMap();
+    if (!isStickSelectionOn()) {
+      clearMap();
+    }
 
     const district = districtSel.value;
     const roadCbs  = getSelectedRoadCheckboxes();
@@ -1172,6 +1212,7 @@ function decorateWithPointerArrow(pointFeature) {
   });
 
   btnReset.addEventListener('click', () => {
+    // Always reset filter controls
     districtSel.value = "";
     renderRoadsList([]);
     roadsSearch.value = "";
@@ -1181,11 +1222,16 @@ function decorateWithPointerArrow(pointFeature) {
     setAssetsUIByMode('none');
     assetsList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
 
-    clearMap();
-    closeDrawer();  
-    map.getView().setCenter(ol.proj.fromLonLat([71.5, 34.0]));
-    map.getView().setZoom(7);
-    // drawer is managed inside boot(); if present, close it safely
+    const stickOn = isStickSelectionOn();
+
+    // Only clear map and recenter when "stick" is OFF
+    if (!stickOn) {
+      clearMap();
+      map.getView().setCenter(ol.proj.fromLonLat([71.5, 34.0]));
+      map.getView().setZoom(7);
+    }
+
+    // Always close the drawer visually
     const drawer = document.getElementById('detail-drawer');
     if (drawer) {
       drawer.setAttribute('aria-hidden', 'true');
@@ -1194,6 +1240,7 @@ function decorateWithPointerArrow(pointFeature) {
       updateMapSizeSoon();
     }
   });
+
 
   // ---------- Boot ----------
   (async function boot() {
@@ -1338,8 +1385,15 @@ function decorateWithPointerArrow(pointFeature) {
       return res.json();
     }
 
-    // --- Image Lightbox (zoom/rotate) ---
-    let _imgBox, _imgEl, _scale = 1, _deg = 0;
+  // --- Image Lightbox (zoom/rotate + wheel zoom + drag pan) ---
+  let _imgBox, _imgEl;
+  let _scale = 1, _deg = 0;
+  let _offsetX = 0, _offsetY = 0;        // pan offsets
+  let _dragging = false;
+  let _dragStartX = 0, _dragStartY = 0;
+  let _imgStartX = 0, _imgStartY = 0;
+  let _imgCurrentSrc = '';
+
     function ensureLightbox() {
       if (_imgBox) return;
       _imgBox = document.createElement('div');
@@ -1354,11 +1408,24 @@ function decorateWithPointerArrow(pointFeature) {
             <button class="imglightbox__btn" data-act="zoom-in">Zoom +</button>
             <button class="imglightbox__btn" data-act="zoom-out">Zoom −</button>
             <button class="imglightbox__btn" data-act="rotate">Rotate ↻</button>
+            <button class="imglightbox__btn" data-act="open-tab">Open in new tab ↗</button>
             <button class="imglightbox__btn" data-act="close">Close ✕</button>
           </div>
         </div>`;
       document.body.appendChild(_imgBox);
       _imgEl = _imgBox.querySelector('.imglightbox__img');
+      _imgEl.draggable = false; // prevent default browser drag ghost
+
+      const stage = _imgBox.querySelector('.imglightbox__stage');
+
+      // Mouse wheel zoom
+      stage.addEventListener('wheel', onLightboxWheel, { passive: false });
+
+      // Click + drag pan
+      stage.addEventListener('mousedown', onLightboxDragStart);
+      window.addEventListener('mousemove', onLightboxDragMove);
+      window.addEventListener('mouseup', onLightboxDragEnd);
+
       _imgBox.addEventListener('click', (e) => {
         // click backdrop closes
         if (e.target === _imgBox) closeImgBox();
@@ -1370,19 +1437,64 @@ function decorateWithPointerArrow(pointFeature) {
           if (act === 'zoom-in') { _scale = Math.min(6, _scale + 0.25); applyImgTf(); }
           if (act === 'zoom-out') { _scale = Math.max(0.25, _scale - 0.25); applyImgTf(); }
           if (act === 'rotate') { _deg = (_deg + 90) % 360; applyImgTf(); }
+          if (act === 'open-tab') {
+            const url = _imgCurrentSrc || _imgEl?.src;
+            if (url) window.open(url, '_blank', 'noopener');
+          }
         });
       });
       document.addEventListener('keydown', (e)=>{
         if (e.key === 'Escape' && !_imgBox.hasAttribute('hidden')) closeImgBox();
       });
     }
-    function applyImgTf(){ if (_imgEl) _imgEl.style.transform = `scale(${_scale}) rotate(${_deg}deg)`; }
+
+    function applyImgTf() {
+      if (_imgEl) {
+        _imgEl.style.transform =
+          `translate(${_offsetX}px, ${_offsetY}px) scale(${_scale}) rotate(${_deg}deg)`;
+      }
+    }
+    function onLightboxWheel(e) {
+      e.preventDefault();
+      const delta = e.deltaY || e.wheelDelta || 0;
+      const step = delta > 0 ? -0.25 : 0.25;  // scroll down = zoom out
+      _scale = Math.min(6, Math.max(0.25, _scale + step));
+      applyImgTf();
+    }
+
+    function onLightboxDragStart(e) {
+      // left button only
+      if (e.button !== 0) return;
+      _dragging = true;
+      _dragStartX = e.clientX;
+      _dragStartY = e.clientY;
+      _imgStartX = _offsetX;
+      _imgStartY = _offsetY;
+    }
+
+    function onLightboxDragMove(e) {
+      if (!_dragging) return;
+      _offsetX = _imgStartX + (e.clientX - _dragStartX);
+      _offsetY = _imgStartY + (e.clientY - _dragStartY);
+      applyImgTf();
+    }
+
+    function onLightboxDragEnd() {
+      _dragging = false;
+    }
+
     function openImgBox(src){
       ensureLightbox();
-      _scale = 1; _deg = 0; applyImgTf();
+      _scale = 1;
+      _deg = 0;
+      _offsetX = 0;
+      _offsetY = 0;
+      _imgCurrentSrc = src || '';
+      applyImgTf();
       _imgEl.src = src;
       _imgBox.removeAttribute('hidden');
     }
+
     function closeImgBox(){ _imgBox?.setAttribute('hidden',''); }
 
     // Normalize pics coming from API (array, JSON string, comma string, or alt keys)
@@ -1779,7 +1891,7 @@ function decorateWithPointerArrow(pointFeature) {
 
           // 1) Images (collapsible, open)
           const pics = normalizePics(asset);
-          panel.appendChild(makeGallery(pics, 'Images'));
+          panel.appendChild(makeGallery(pics, '🖼️ Images'));
 
           // 2) Metadata (collapsible, closed by default)
           panel.appendChild(makeMetadataSection(asset));

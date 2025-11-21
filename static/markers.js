@@ -44,46 +44,33 @@
       editHighlightFeature = new ol.Feature({ geometry: geom });
       editHighlightSource.addFeature(editHighlightFeature);
 
-      // Multiple outward ripples radiating from the point
+      // Single "breathing" circle – smooth radius change in/out
       let phase = 0;
-      const baseRadius = 10;
-      const maxRadius = 40;
-      const ringCount = 3;
-      const ringGap = 7;
+      const baseRadius = 20;   // mid radius
+      const amplitude = 6;     // how much it grows/shrinks
 
       editHighlightTimer = setInterval(() => {
         if (!editHighlightFeature) return;
 
-        // Move the wave forward
-        phase = (phase + 1) % (maxRadius - baseRadius);
-        const start = baseRadius + phase;
+        // Smooth sinusoidal motion for radius
+        phase += 0.12; // lower = slower pulse
+        const r = baseRadius + amplitude * (0.5 + 0.5 * Math.sin(phase));
 
-        const styles = [];
-        for (let i = 0; i < ringCount; i++) {
-          const r = start + i * ringGap;
-          if (r > maxRadius) continue;
-
-          const strokeAlpha = 0.9 - i * 0.25; // fade outer rings
-          const fillAlpha = 0.30 - i * 0.10;
-
-          styles.push(
-            new ol.style.Style({
-              image: new ol.style.Circle({
-                radius: r,
-                stroke: new ol.style.Stroke({
-                  color: `rgba(239,68,68,${Math.max(strokeAlpha, 0)})`,
-                  width: 2,
-                }),
-                fill: new ol.style.Fill({
-                  color: `rgba(254,226,226,${Math.max(fillAlpha, 0)})`,
-                }),
+        editHighlightFeature.setStyle(
+          new ol.style.Style({
+            image: new ol.style.Circle({
+              radius: r,
+              stroke: new ol.style.Stroke({
+                color: 'rgba(239,68,68,0.9)', // red-500 stroke
+                width: 2,
               }),
-            })
-          );
-        }
-
-        editHighlightFeature.setStyle(styles);
-      }, 70);
+              fill: new ol.style.Fill({
+                color: 'rgba(254,226,226,0.35)', // red-100 fill
+              }),
+            }),
+          })
+        );
+      }, 40); // smaller interval = smoother animation
     }
 
     // --- Shared Translate interaction for editing marker positions ---

@@ -117,7 +117,7 @@
         if (map && layer) {
           map.removeLayer(layer);
         }
-      } catch (e) {
+      } catch (e) { 
         console.warn('remove layer failed', e);
       }
       userLayers.delete(id);

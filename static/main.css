@@ -590,6 +590,21 @@ body.drawer-open #map {
   grid-column: 1 / -1;
   justify-content: flex-start;
 }
+
+/* "Stick current selection" checkbox next to Reset */
+.filters-actions .stick-selection {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.filters-actions .stick-selection input {
+  margin: 0;
+}
+
 /* .filters-panel.open {
   max-height: 320px; 
   opacity: 1;
@@ -725,6 +740,8 @@ body.drawer-open #map {
 }
 .ms-trigger[aria-expanded="true"] { background: #f6f8fa; }
 
+
+
 .ms-panel {
   position: absolute; z-index: 20;
   left: 0; right: 0; top: calc(100% + 6px);
@@ -768,6 +785,63 @@ body.drawer-open #map {
 }
 .radio { display: inline-flex; align-items: center; gap: 6px; }
 .radio input { accent-color: #1d4ed8; }
+
+
+/* --- COMPACT Multi-Select (Roads & Assets) --- */
+.multi-select .ms-trigger {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  height: 28px !important;      /* same compact height as Apply/Reset */
+}
+
+.multi-select .ms-trigger span {
+  font-size: 11px !important;
+}
+
+/* dropdown panel smaller padding */
+.multi-select .ms-panel {
+  padding: 6px !important;
+  border-radius: 8px !important;
+}
+
+/* search bar compact */
+.multi-select .ms-search input {
+  padding: 6px 8px !important;
+  font-size: 11px !important;
+  height: 28px !important;
+}
+
+/* checkbox rows compact */
+.multi-select .ms-list .check {
+  padding: 4px 4px !important;
+}
+
+.multi-select .ms-list .check span {
+  font-size: 11px !important;
+}
+
+/* Select All / Clear All buttons */
+.multi-select .ms-actions button {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  height: 26px !important;
+}
+
+/* Compact radio buttons for Assets */
+#assets-select .radio span {
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+}
+
+/* Make District dropdown as compact as Roads / Assets triggers */
+.filters-form #filter-district {
+  font-size: 11px;
+  padding: 5px 9px;      /* tighter padding */
+  height: 30px;          /* matches compact buttons */
+  line-height: 1.2;
+}
+
+
 
 /* Map fills remaining space; adjusts automatically when filters-panel opens */
 #map {

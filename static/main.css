@@ -951,6 +951,29 @@ body.drawer-open #map {
   word-break: break-word;
 }
 
+/* Override generic .kv styles for the drawer's view mode */
+.drawer-edit .kv-view {
+  border-collapse: collapse;
+  font-size: 13px;          /* keep typography consistent */
+}
+
+/* Remove the top borders between rows inside drawer view */
+.drawer-edit .kv-view tr + tr td,
+.drawer-edit .kv-view tr + tr th {
+  border-top: none;
+}
+
+/* Full-width, stacked layout for headers + values */
+.drawer-edit .kv-view th {
+  width: auto;              /* don't lock to 38% */
+  padding: 0 0 2px 0;       /* tighter spacing above value */
+}
+
+.drawer-edit .kv-view td {
+  padding: 0 0 6px 0;       /* small space under value */
+}
+
+
 
 
 /* Drawer close button style (reuse Add Layer look) */

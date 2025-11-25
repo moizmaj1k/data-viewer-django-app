@@ -1,5 +1,8 @@
 (function () {
   let SELECTED_ROAD_ID = null;
+  // --- Global edit state ---
+  let ACTIVE_EDITOR = null;   // { kind: 'road'|'asset', id, record, nodes, ... }
+  let EDIT_MODE = 'view';     // 'view' | 'edit'
   
   // ---------- Constants ----------
   const GOOGLE_KEY = "{{ GOOGLE_TILES_KEY }}"; // Google *tiles* key
@@ -184,6 +187,13 @@
   map.addControl(new ol.control.ScaleLine());
   map.addControl(new ol.control.ZoomSlider());
   map.addControl(new ol.control.Rotate());
+  // --- Shared Modify interaction for editing points (road/asset endpoints) ---
+  const editableFeatures = new ol.Collection();
+  const modifyInteraction = new ol.interaction.Modify({
+    features: editableFeatures,
+  });
+  map.addInteraction(modifyInteraction);
+  modifyInteraction.setActive(false);
 
   // >>> Expose a stable public surface for layers.js and anyone else
   window.AppMap = { map, ol };
@@ -505,6 +515,205 @@
     ['drainage','Dr'], ['retainingwall','Rw'], ['guardrail','Gr'],
     ['dykecurbstone','Dc'], ['tunnel','Tu'], ['patchcondition','Pc']
   ]);
+
+  // Map drawer section key → asset type
+  const SECTION_ASSET_MAP = {
+    road: 'road',
+    roads: 'road',
+
+    bridge: 'bridge',
+    bridges: 'bridge',
+
+    culvert: 'culvert',
+    culverts: 'culvert',
+
+    signboard: 'signboard',
+    signboards: 'signboard',
+
+    light_pole: 'light_pole',
+    lightpole: 'light_pole',
+    light_poles: 'light_pole',
+
+    interchange: 'interchange',
+    interchanges: 'interchange',
+
+    patch_condition: 'patch_condition',
+    patch: 'patch_condition',
+
+    road_crossing: 'road_crossing',
+    road_crossings: 'road_crossing',
+
+    toll: 'toll',
+    tolls: 'toll',
+
+    drainage: 'drainage',
+
+    retaining_wall: 'retaining_wall',
+    retaining_walls: 'retaining_wall',
+
+    guard_rail: 'guard_rail',
+    guard_rails: 'guard_rail',
+
+    tunnel: 'tunnel',
+    tunnels: 'tunnel',
+
+    dyke_curb_stone: 'dyke_curb_stone',
+    dyke_curb_stones: 'dyke_curb_stone'
+  };
+
+  // Dropdown options per asset / field
+  const ASSET_DROPDOWN_OPTIONS = {
+    road: {
+      carriageway_type: ['Single', 'Dual', 'Triple', 'Four Lane', 'Five Lane', 'Six Lane', 'Seven Lane', 'Eight Lane'],
+      no_of_lanes: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+      traffic_flow_direction: ['One Way', 'Two Way'],
+      executing_agency: ['PKHA', 'C&W'],
+      road_class: ['Motorway', 'Arterial Road', 'Collector Road', 'District Road', 'Access/Local Road', 'Rural Road', 'Urban Road'],
+      pavement_type: ['TST/DST', 'Asphalt Concrete', 'Shingle/Gravel', 'PCC', 'Earthen'],
+      shoulder_type: ['TST/DST', 'Asphalt Concrete', 'Shingle/Gravel', 'PCC', 'Earthen', 'None'],
+      median_type: ['Curb Stone', 'Grass Barrier', 'New Jersey Barrier', 'None'],
+      usability: ['All Weather', 'Snow Bound']
+    },
+
+    bridge: {
+      construction_type: ['RCC', 'RCC. Stone', 'Arch', 'Steel Truss', 'Suspension', 'Masonry', 'Wooden', 'Steel With Wooden Slab', 'T-Girder', 'I-Girder', 'Prestressed'],
+      parapet: ['Masonry', 'RCC', 'RCC Guard/Rails', 'Metallic Railings', 'Crash Barrier', 'Wooden'],
+      abutment_pier_material: ['Stone Masonry', 'Brick Masonry', 'Mass Concrete', 'Reinforced Concrete', 'Columns'],
+      passage: ['River', 'Flood Relief Channel', 'Irrigation Channel', 'Canal', 'Railway', 'Roadway', 'Pedestrian', 'Underpass', 'Flyover', 'Nalla'],
+      foundation_type: ['Spread Footing', 'Piles', 'Caissons', 'Others'],
+      type_of_joints: ['Neoprene', 'Steel'],
+      severity: ['Low', 'Moderate', 'High']
+    },
+
+    culvert: {
+      construction_type: ['Box', 'Pipe', 'Arch', 'Slab', 'Pipe Arch', 'Slab over Masonry', 'Composite'],
+      type_of_apron: ['Stone', 'Brick', 'Concrete', 'None'],
+      type_of_wingwalls: ['Stone', 'Brick', 'Concrete', 'None'],
+      type_of_headwalls: ['Stone', 'Brick', 'Concrete', 'None'],
+      waterway_clearance: ['Choked', 'Clear'],
+      condition: ['Good', 'Fair', 'Poor'],
+      severity: ['Low', 'Moderate', 'High']
+    },
+
+    signboard: {
+      type_of_sign_board: ['Warning', 'Informatory', 'Regulatory', 'Gantry', 'Milestone', 'RD Post'],
+      side: ['Right Side', 'Median', 'Left Side', 'Both Sides'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    light_pole: {
+      type_of_light_pole: ['Single Arm', 'Double Arms', 'Multi Arms', 'Flood Light'],
+      side: ['Right Side', 'Median', 'Left Side', 'Both Sides'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    interchange: {
+      type_of_interchange: ['Diamond', 'Partial Cloverleaf', 'Full Cloverleaf', 'Directional', 'Trumpet', 'At Grade'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    patch_condition: {
+      condition: ['Good', 'Fair', 'Poor', 'Restaurant', 'Hotel', 'Bank', 'Petrol Pump', 'Marriage Hall', 'Kanta']
+    },
+
+    road_crossing: {
+      type_of_road_crossing: ['Underpass', 'Subway', 'Cattle Creep'],
+      type_of_headwalls: ['Stone', 'Brick', 'Concrete'],
+      severity: ['Low', 'Moderate', 'High'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    toll: {
+      type_of_toll: ['Barrier Only', 'Barrier with Infrastructures'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    drainage: {
+      drain_type: [
+        'Ditch Drain', 'Saucer', 'Earthen', 'PCC Open Drain',
+        'PCC Cover Drain', 'RCC', 'Drain with Breast Wall'
+      ],
+      brest_wall_type: ['PCC', 'RCC', 'Plum', 'Stone Masonry', 'None'],
+      side: ['Right Side', 'Median', 'Left Side', 'Both Sides', 'Median and Both Sides'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    retaining_wall: {
+      type_of_retaining_wall: ['PCC', 'RCC', 'PLUM', 'Dry Stone Masonry', 'Mortar Stone Masonry'],
+      has_paraphet_wall: ['Yes', 'No'], // still as dropdown? (we'll use boolean toggle from DB when true/false)
+      paraphet_wall_type: ['Plum', 'PCC', 'Stone Masonry'],
+      side: ['Right Side', 'Left Side', 'Both Sides'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    guard_rail: {
+      type_of_guard_rail: ['W-Beam', 'Steel Pipes', 'Steel Ropes', 'Wooden'],
+      side: ['Right Side', 'Median', 'Left Side', 'Both Sides', 'Median and Both Sides'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    tunnel: {
+      type_of_tunnel: ['Slide Shelter', 'Hill Crossing'],
+      type_of_lining: ['RCC', 'Without lining'],
+      shape_of_tunnel: ['Arched Shaped', 'Rectangular Shaped', 'Circular Shaped'],
+      no_of_tubes: ['1', '2', '3', '4', '5', '6', '7', '8'],
+      type_of_portal: ['With Box Cut', 'Without Box Cut'],
+      severity: ['Low', 'Moderate', 'High'],
+      condition: ['Good', 'Fair', 'Poor']
+    },
+
+    dyke_curb_stone: {
+      type_of_dyke_curb_stone: ['PCC', 'Stone'],
+      side: ['Right Side', 'Median', 'Left Side', 'Both Sides', 'Median and Both Sides'],
+      condition: ['Good', 'Fair', 'Poor']
+    }
+  };
+
+  function getFieldMeta(sectionKey, fieldKey, rawValue) {
+    const assetType = SECTION_ASSET_MAP[sectionKey] || sectionKey;
+    const opts =
+      (ASSET_DROPDOWN_OPTIONS[assetType] && ASSET_DROPDOWN_OPTIONS[assetType][fieldKey]) ||
+      null;
+
+    if (opts) {
+      return { widget: 'select', options: opts };
+    }
+
+    if (fieldKey === 'remarks') {
+      return { widget: 'textarea' };
+    }
+
+    if (typeof rawValue === 'boolean' || fieldKey.startsWith('has_') || fieldKey.startsWith('is_')) {
+      return { widget: 'boolean' };
+    }
+
+    if (typeof rawValue === 'number') {
+      return { widget: 'number' };
+    }
+
+    return { widget: 'text' };
+  }
+
+  // Value reader for later (handles checkbox vs others)
+  function getControlValue(control) {
+    if (!control) return undefined;
+    if (control.tagName === 'INPUT') {
+      if (control.type === 'checkbox') return !!control.checked;
+      if (control.type === 'number') {
+        const v = control.value.trim();
+        if (v === '') return null;
+        const num = Number(v);
+        return Number.isNaN(num) ? v : num;
+      }
+      return control.value;
+    }
+    if (control.tagName === 'SELECT' || control.tagName === 'TEXTAREA') {
+      return control.value;
+    }
+    return undefined;
+  }
+
+
   function abbrev(key){
     if (!key) return '';
     const k = String(key).toLowerCase().replace(/\s+/g,'');
@@ -1260,6 +1469,217 @@ function decorateWithPointerArrow(pointFeature) {
     const drawerTitle = document.getElementById('drawer-title');
     const drawerBody = document.getElementById('drawer-body');
     const drawerClose = document.getElementById('drawer-close');
+    // --- One-time CSS for edit mode (drawer form) ---
+    function ensureDrawerEditStyles() {
+      if (document.getElementById('drawer-edit-css')) return;
+      const css = document.createElement('style');
+      css.id = 'drawer-edit-css';
+      css.textContent = `
+        .drawer-edit {
+          margin-top: 10px;
+        }
+
+        /* Toggle: more rectangular, primary blue for active */
+        .edit-toggle {
+          display: flex;
+          margin-bottom: 10px;
+          border-radius: 8px;
+          overflow: hidden;
+          border: 1px solid #d1d5db;
+          background: #ffffff;
+        }
+        .edit-toggle button {
+          flex: 1 1 0;
+          padding: 8px 12px;
+          border: 0;
+          background: #ffffff;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          color: #111827;
+        }
+        .edit-toggle button.is-active {
+          background: #2563eb;   /* primary blue */
+          color: #ffffff;
+        }
+        .edit-toggle button:not(.is-active):hover {
+          background: #e5e7eb;
+        }
+
+        /* Edit grid: two fields per row where possible */
+        .edit-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 16px;
+        }
+        .edit-field {
+          flex: 1 1 calc(50% - 8px);
+          min-width: 180px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .edit-field label {
+          font-size: 13px;
+          color: #4b5563;
+        }
+        .edit-field label.field-label-dirty {
+          font-weight: 700;
+          color: #b91c1c;
+        }
+        .edit-field label.field-label-dirty::after {
+          content: " *";
+        }
+        /* Inputs, dropdowns, text areas all share the same styling */
+        .edit-field input,
+        .edit-field select,
+        .edit-field textarea {
+          padding: 6px 8px;
+          border-radius: 6px;
+          border: 1px solid #d1d5db;
+          font-size: 13px;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          background-color: #ffffff;
+        }
+
+        /* Consistent focus ring for all controls */
+        .edit-field input:focus,
+        .edit-field select:focus,
+        .edit-field textarea:focus {
+          outline: none;
+          border-color: #111827;
+          box-shadow: 0 0 0 1px rgba(17,24,39,0.4);
+        }
+
+        /* Disabled state */
+        .edit-field input[disabled],
+        .edit-field select[disabled],
+        .edit-field textarea[disabled] {
+          background: #f9fafb;
+          color: #9ca3af;
+          cursor: default;
+        }
+
+        /* Make textarea slightly taller and prevent crazy resize */
+        .edit-field textarea {
+          min-height: 70px;
+          resize: vertical;
+        }
+
+        /* Optional: narrower dropdown arrow and align text nicely */
+        .edit-field select {
+          padding-right: 28px;
+        }
+
+        .edit-field input.field-coord-dirty {
+          background: #fef2f2;
+          border-color: #b91c1c;
+        }
+
+        /* Lat/Lon readonly style + hint */
+        .edit-field input.field-coord-readonly {
+          opacity: 0.6;
+        }
+        .coord-hint {
+          margin-top: 2px;
+          font-size: 10px; /* smaller hint text */
+          color: #6b7280;
+        }
+
+        /* View vs Edit visibility */
+        .drawer-edit[data-mode="view"] .edit-grid {
+          display: none;
+        }
+        .drawer-edit[data-mode="edit"] .kv-view {
+          display: none;
+        }
+
+        /* NEW: View mode → 2 fields per row, clean layout */
+        .drawer-edit .kv-view {
+          width: 100%;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px 8px;          /* spacing between cells */
+          margin-top: 2px;
+        }
+
+        .drawer-edit .kv-view tr {
+          flex: 1 1 calc(50% - 8px);   /* 2 per row */
+          min-width: 180px;
+          display: flex;
+          flex-direction: column;
+          padding: 2px 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .drawer-edit .kv-view tr:last-child {
+          border-bottom: none;
+        }
+
+        .drawer-edit .kv-view th {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;            /* stronger header */
+          color: #1f2937;              /* darker heading */
+          margin-bottom: 2px;
+          white-space: normal;
+        }
+
+        .drawer-edit .kv-view td {
+          display: block;
+          font-size: 13px;
+          color: #111827;
+          word-break: break-word;
+        }
+
+        /* Boolean toggle switch */
+        .toggle-wrapper {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .toggle-switch {
+          position: relative;
+          width: 34px;
+          height: 18px;
+        }
+        .toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+        .toggle-slider {
+          position: absolute;
+          cursor: pointer;
+          inset: 0;
+          background-color: #d1d5db;
+          border-radius: 999px;
+          transition: 0.2s;
+        }
+        .toggle-slider::before {
+          content: "";
+          position: absolute;
+          height: 14px;
+          width: 14px;
+          left: 2px;
+          top: 2px;
+          background-color: white;
+          border-radius: 999px;
+          transition: 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+          background-color: #2563eb;
+        }
+        .toggle-switch input:checked + .toggle-slider::before {
+          transform: translateX(16px);
+        }
+
+      `;
+      document.head.appendChild(css);
+    }
+
+    ensureDrawerEditStyles();
+
 
     function openDrawer(title, nodeOrHTML, opts = {}) {
       if (!drawer || !drawerTitle || !drawerBody) {
@@ -1346,6 +1766,371 @@ function decorateWithPointerArrow(pointFeature) {
       });
       return tbl;
     }
+
+    // --- View/Edit section builder (generic) -------------------------------
+    // --- View/Edit section builder (generic) -------------------------------
+    function buildViewEditSection(kind, record, {
+      extraSkip = [],
+      geomBindings = null,   // { start:{latKey,lonKey,feature}, end:{...}, point:{...} }
+      id = null
+    } = {}) {
+      const root = document.createElement('div');
+      root.className = 'drawer-edit';
+      root.dataset.mode = EDIT_MODE || 'view';
+
+      // Toggle bar
+      const toggle = document.createElement('div');
+      toggle.className = 'edit-toggle';
+      const btnView = document.createElement('button');
+      const btnEdit = document.createElement('button');
+      btnView.type = btnEdit.type = 'button';
+      btnView.textContent = 'View Mode';
+      btnEdit.textContent = 'Edit Mode';
+      toggle.appendChild(btnView);
+      toggle.appendChild(btnEdit);
+
+      // View table (reusing kv table)
+      const viewTable = objToTable(record, extraSkip);
+      viewTable.classList.add('kv-view');
+
+      // Edit grid
+      const grid = document.createElement('div');
+      grid.className = 'edit-grid';
+
+      const SKIP = new Set([...HIDE_IN_DETAILS, ...extraSkip]);
+
+      // Decide which asset "section" we are in for dropdown metadata
+      const sectionKey =
+        kind === 'road'
+          ? 'road'
+          : (record.type || record.asset_type || '').toString().toLowerCase();
+
+      const original = {};      // stringified original values
+      const inputsByKey = {};
+      const labelsByKey = {};
+      const dirtyKeys = new Set();
+
+      // Build kvPairs from record (label + value) while respecting SKIP
+      const kvPairs = {};
+      Object.entries(record || {}).forEach(([key, value]) => {
+        if (SKIP.has(key)) return;
+        const niceLabel = key
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+        kvPairs[key] = { label: niceLabel, value };
+        original[key] = value == null ? '' : String(value);
+      });
+
+      // Build edit fields
+      Object.entries(kvPairs).forEach(([key, { label, value }]) => {
+        const fieldDiv = document.createElement('div');
+        fieldDiv.className = 'edit-field';
+
+        const labelEl = document.createElement('label');
+        labelEl.textContent = label;
+        fieldDiv.appendChild(labelEl);
+        labelsByKey[key] = labelEl;
+
+        const meta = getFieldMeta(sectionKey, key, value);
+
+        let control;
+
+        if (meta.widget === 'select') {
+          const select = document.createElement('select');
+          select.className = 'edit-select';
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = '-- select --';
+          placeholder.disabled = true;
+          if (value == null || value === '') placeholder.selected = true;
+          select.appendChild(placeholder);
+
+          meta.options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt;
+            o.textContent = opt;
+            if (String(value) === String(opt)) o.selected = true;
+            select.appendChild(o);
+          });
+
+          control = select;
+        } else if (meta.widget === 'boolean') {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'toggle-wrapper';
+
+          const lbl = document.createElement('label');
+          lbl.className = 'toggle-switch';
+
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = !!value;
+
+          const slider = document.createElement('span');
+          slider.className = 'toggle-slider';
+
+          lbl.appendChild(input);
+          lbl.appendChild(slider);
+          wrapper.appendChild(lbl);
+
+          fieldDiv.appendChild(wrapper);
+          grid.appendChild(fieldDiv);
+          control = input;
+          inputsByKey[key] = control;
+
+          const dirtyHandler = () => updateDirtyState(key);
+          control.addEventListener('change', dirtyHandler);
+          return; // done for this field
+        } else if (meta.widget === 'textarea') {
+          const textarea = document.createElement('textarea');
+          textarea.rows = 3;
+          textarea.value = value == null ? '' : String(value);
+          control = textarea;
+        } else {
+          const input = document.createElement('input');
+          input.type = meta.widget === 'number' ? 'number' : 'text';
+          input.value = value == null ? '' : String(value);
+          control = input;
+        }
+
+        fieldDiv.appendChild(control);
+        grid.appendChild(fieldDiv);
+        inputsByKey[key] = control;
+
+        const dirtyHandler = () => updateDirtyState(key);
+
+        if (control.tagName === 'INPUT' || control.tagName === 'TEXTAREA') {
+          control.addEventListener('input', dirtyHandler);
+        } else if (control.tagName === 'SELECT') {
+          control.addEventListener('change', dirtyHandler);
+        }
+      });
+
+      // Compare against original values using getControlValue()
+      function updateDirtyState(key) {
+        const control = inputsByKey[key];
+        const label = labelsByKey[key];
+        if (!control || !label) return;
+
+        const cur = getControlValue(control);
+        const curStr = cur == null ? '' : String(cur);
+        const origStr = original[key] ?? '';
+
+        const isDirty = curStr !== origStr;
+
+        if (isDirty) {
+          dirtyKeys.add(key);
+          label.classList.add('field-label-dirty');
+        } else {
+          dirtyKeys.delete(key);
+          label.classList.remove('field-label-dirty');
+        }
+      }
+
+      root.appendChild(toggle);
+      root.appendChild(viewTable);
+      root.appendChild(grid);
+
+      // --- Geometry sync (fields <-> markers) ------------------------------
+      const geomListeners = [];
+      function bindGeomField(binding) {
+        if (!binding) return;
+        const { latKey, lonKey, feature } = binding;
+        if (!feature || !latKey || !lonKey) return;
+
+        const latInput = inputsByKey[latKey];
+        const lonInput = inputsByKey[lonKey];
+        if (!latInput || !lonInput) return;
+
+        latInput.classList.add('field-coord');
+        lonInput.classList.add('field-coord');
+
+        // Lat/Lon are marker-controlled: read-only but selectable for copy
+        latInput.readOnly = true;
+        lonInput.readOnly = true;
+        latInput.classList.add('field-coord-readonly');
+        lonInput.classList.add('field-coord-readonly');
+
+        // Tiny infobox below BOTH latitude & longitude fields
+        const hintText = 'Move the map marker to change this location.';
+        const latField = latInput.closest('.edit-field');
+        if (latField && !latField.querySelector('.coord-hint')) {
+          const hint = document.createElement('div');
+          hint.className = 'coord-hint';
+          hint.textContent = hintText;
+          latField.appendChild(hint);
+        }
+        const lonField = lonInput.closest('.edit-field');
+        if (lonField && !lonField.querySelector('.coord-hint')) {
+          const hint = document.createElement('div');
+          hint.className = 'coord-hint';
+          hint.textContent = hintText;
+          lonField.appendChild(hint);
+        }
+
+        // Marker → fields (dragging marker updates coords + marks them dirty)
+        function updateInputsFromFeature() {
+          const geom = feature.getGeometry && feature.getGeometry();
+          if (!geom || !(geom instanceof ol.geom.Point)) return;
+          const [lon, lat] = ol.proj.toLonLat(geom.getCoordinates());
+          const latVal = lat.toFixed(6);
+          const lonVal = lon.toFixed(6);
+          if (latInput.value !== latVal) {
+            latInput.value = latVal;
+            latInput.classList.add('field-coord-dirty');
+            updateDirtyState(latKey);
+          }
+          if (lonInput.value !== lonVal) {
+            lonInput.value = lonVal;
+            lonInput.classList.add('field-coord-dirty');
+            updateDirtyState(lonKey);
+          }
+        }
+
+        const changeKey = feature.on('change', updateInputsFromFeature);
+        geomListeners.push({ feature, changeKey });
+
+        // initial sync from current marker position
+        updateInputsFromFeature();
+      }
+
+      if (geomBindings) {
+        if (geomBindings.point) bindGeomField(geomBindings.point);
+        if (geomBindings.start) bindGeomField(geomBindings.start);
+        if (geomBindings.end) bindGeomField(geomBindings.end);
+      }
+
+      // --- Hook into global ACTIVE_EDITOR ----------------------------------
+      ACTIVE_EDITOR = {
+        kind,
+        id,
+        record,
+        root,
+        toggle: { btnView, btnEdit },
+        viewTable,
+        grid,
+        inputsByKey,
+        labelsByKey,
+        original,
+        dirtyKeys,
+        geomBindings,
+        geomListeners,
+      };
+
+      function setMode(mode) {
+        EDIT_MODE = mode;
+        root.dataset.mode = mode;
+        const isView = mode === 'view';
+        btnView.classList.toggle('is-active', isView);
+        btnEdit.classList.toggle('is-active', !isView);
+
+        // enable/disable inputs
+        Object.values(inputsByKey).forEach(inp => {
+          inp.disabled = isView;
+        });
+
+        // update Modify interaction
+        editableFeatures.clear();
+        if (!geomBindings || isView) {
+          modifyInteraction.setActive(false);
+          return;
+        }
+        ['point', 'start', 'end'].forEach(key => {
+          const b = geomBindings[key];
+          if (b && b.feature) editableFeatures.push(b.feature);
+        });
+        modifyInteraction.setActive(true);
+      }
+
+      btnView.addEventListener('click', () => setMode('view'));
+      btnEdit.addEventListener('click', () => setMode('edit'));
+
+      // initial mode
+      setMode(EDIT_MODE || 'view');
+
+      return root;
+    }
+
+
+    // --- Detect lat/lon field names and match them to map features ----------
+    function detectGeomBindingsForRoad(roadObj, roadId) {
+      if (!roadObj || !roadId) return null;
+      const keys = Object.keys(roadObj);
+      const matchKey = (re) => keys.find(k => re.test(k));
+
+      const startLatKey = matchKey(/start.*lat|lat.*start/i);
+      const startLonKey = matchKey(/start.*lon|lon.*start/i);
+      const endLatKey   = matchKey(/end.*lat|lat.*end/i);
+      const endLonKey   = matchKey(/end.*lon|lon.*end/i);
+
+      const endpoints = pointsSource.getFeatures().filter(f =>
+        f.get('feature_type') === 'road_endpoint' &&
+        String(f.get('road_id') || '') === String(roadId)
+      );
+      let startFeat = null;
+      let endFeat = null;
+      endpoints.forEach(f => {
+        const lbl = (f.get('name') || '').toString().toUpperCase();
+        if (lbl === 'S') startFeat = f;
+        if (lbl === 'E') endFeat = f;
+      });
+
+      return {
+        start: (startLatKey && startLonKey && startFeat) ? {
+          latKey: startLatKey, lonKey: startLonKey, feature: startFeat
+        } : null,
+        end: (endLatKey && endLonKey && endFeat) ? {
+          latKey: endLatKey, lonKey: endLonKey, feature: endFeat
+        } : null
+      };
+    }
+
+    function detectGeomBindingsForAsset(assetObj) {
+      if (!assetObj || !assetObj.id) return null;
+      const keys = Object.keys(assetObj);
+      const matchKey = (re) => keys.find(k => re.test(k));
+
+      const latKey     = matchKey(/^lat$|latitude/i);
+      const lonKey     = matchKey(/^lon$|^lng$|longitude/i);
+      const startLat   = matchKey(/start.*lat|lat.*start/i);
+      const startLon   = matchKey(/start.*lon|lon.*start/i);
+      const endLat     = matchKey(/end.*lat|lat.*end/i);
+      const endLon     = matchKey(/end.*lon|lon.*end/i);
+
+      // First try: single point asset
+      if (latKey && lonKey) {
+        const feature = pointsSource.getFeatures().find(f =>
+          f.get('asset_kind') === 'point' &&
+          String(f.get('id') || '') === String(assetObj.id)
+        );
+        if (feature) {
+          return {
+            point: { latKey, lonKey, feature }
+          };
+        }
+      }
+
+      // Second: line asset with S/E endpoints
+      if (startLat && startLon && endLat && endLon) {
+        const endpoints = pointsSource.getFeatures().filter(f =>
+          f.get('kind') === 'line-endpoint' &&
+          String(f.get('id') || '') === String(assetObj.id)
+        );
+        let startFeat = null, endFeat = null;
+        endpoints.forEach(f => {
+          const badge = (f.get('badgeText') || f.get('name') || '').toString().toUpperCase();
+          if (badge === 'S') startFeat = f;
+          if (badge === 'E') endFeat = f;
+        });
+        return {
+          start: (startFeat ? { latKey: startLat, lonKey: startLon, feature: startFeat } : null),
+          end:   (endFeat   ? { latKey: endLat, lonKey: endLon, feature: endFeat }   : null)
+        };
+      }
+
+      return null;
+    }
+
+
 
     async function fetchRoad(roadId) {
       const res = await fetch(`/api/road/${roadId}/`); // no assets by default (fast)
@@ -1832,7 +2617,13 @@ function decorateWithPointerArrow(pointFeature) {
         pointsSource.getFeatures().forEach(styleByFeatureReset);
         linesSource.getFeatures().forEach(styleByFeatureReset);
         clearSelectedCopies(); // also remove mirrored "always-visible" points
-        clearPointer();  
+        clearPointer();
+
+        // reset editor + modify
+        ACTIVE_EDITOR = null;
+        EDIT_MODE = 'view';
+        editableFeatures.clear();
+        modifyInteraction.setActive(false);
         return;
       }
 
@@ -1855,22 +2646,35 @@ function decorateWithPointerArrow(pointFeature) {
           const payload = await res.json();
 
           const panel = document.createElement('div');
-          // top: counts as bar chart with outside values
+
+          // 1) Asset counts chart
           const chart = makeCountsChart(payload.counts || {});
           panel.appendChild(chart);
-          // then: road images
+
+          // 2) Road images
           const pics = normalizePics(payload.road);
           if (pics.length) panel.appendChild(makeGallery(pics, '🖼️ Road Images'));
-          // metadata (collapsed by default)
-          panel.appendChild(makeMetadataSection(payload.road));
-          // finally: details table (excludes metadata keys & common repeats)
-          panel.appendChild(objToTable(payload.road, ['name']));
+
+          // 3) Metadata (you asked to put the toggle RIGHT BELOW this)
+          const metaSection = makeMetadataSection(payload.road);
+          panel.appendChild(metaSection);
+
+          // 4) View/Edit section (generic) – placed right below metadata
+          const geomBindings = detectGeomBindingsForRoad(payload.road, roadId);
+          const veSection = buildViewEditSection('road', payload.road, {
+            extraSkip: ['name'],
+            geomBindings,
+            id: payload.road?.id
+          });
+          panel.appendChild(veSection);
+
           openDrawer(payload.road.name || 'Road', panel, {
             id: payload.road?.id,
             district: payload.road?.district ?? payload.road?.district_code ?? payload.road?.district_name
           });
           decorateWithPointerArrow(feat);
           return;
+
         }
 
         // 2) Asset points or line endpoints: show ONLY asset details, not whole road
@@ -1894,10 +2698,16 @@ function decorateWithPointerArrow(pointFeature) {
           panel.appendChild(makeGallery(pics, '🖼️ Images'));
 
           // 2) Metadata (collapsible, closed by default)
-          panel.appendChild(makeMetadataSection(asset));
+          const metaSection = makeMetadataSection(asset);
+          panel.appendChild(metaSection);
 
-          // 3) (Optional) keep the full details table if you still want it
-          panel.appendChild(objToTable(asset));
+          // 3) View/Edit section (generic) – directly below metadata
+          const geomBindings = detectGeomBindingsForAsset(asset);
+          const veSection = buildViewEditSection('asset', asset, {
+            geomBindings,
+            id: asset.id
+          });
+          panel.appendChild(veSection);
 
           openDrawer(`${(asset.type || 'Asset').toString().toUpperCase()}`, panel, {
             id: asset.id,

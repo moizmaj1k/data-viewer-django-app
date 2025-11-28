@@ -70,7 +70,7 @@
   const btnApply      = document.getElementById("btn-apply");
   const btnReset      = document.getElementById("btn-reset");
 
-    // --- "Stick current selection" checkbox, shown beside Reset ---
+  // --- "Stick current selection" checkbox, shown beside Reset ---
   const filtersActions = document.querySelector('.filters-actions');
   let stickSelectionCheckbox = null;
 
@@ -97,7 +97,6 @@
   function isStickSelectionOn() {
     return !!(stickSelectionCheckbox && stickSelectionCheckbox.checked);
   }
-
 
   const btnFilters     = document.getElementById("btn-filters");
   const filtersPanel   = document.getElementById("filters-panel");
@@ -229,17 +228,30 @@
   });
   map.addLayer(priorityLayer);
 
+  // --- Pulsing edit ring layer (sits just under the red pointer arrow) ---
+  const editHighlightSource = new ol.source.Vector();
+  const editHighlightLayer  = new ol.layer.Vector({
+    source: editHighlightSource,
+    declutter: false,
+    zIndex: 29             // below priorityLayer (arrow), above pointsLayer
+  });
+  map.addLayer(editHighlightLayer);
+
+  let editHighlightFeature = null;
+  let editHighlightTimer = null;
+
   // Keep track of temporary mirror features we add to priorityLayer
   let selectedCopies = [];
   function clearSelectedCopies() {
     selectedCopies.forEach(f => prioritySource.removeFeature(f));
     selectedCopies = [];
   }
+
   // Mirror only true points (road endpoints, asset points, line endpoints) to priority layer
   function addPriorityCopyFrom(f) {
     const geom = f.getGeometry?.();
     if (!(geom instanceof ol.geom.Point)) return; // only points bypass declutter
-    const copy = new ol.Feature({ geometry: geom.clone() });
+    const copy = new ol.Feature({ geometry: geom });
     // Reuse the base visual so it looks identical; if style is array, keep the last (base) entry
     const s = f.getStyle?.();
     copy.setStyle(Array.isArray(s) ? s[s.length - 1] : s);
@@ -250,7 +262,6 @@
   // ---------- Drawer helpers (map resize only) ----------
   function updateMapSizeSoon(delay = 270) { setTimeout(() => map.updateSize(), delay); }
  
-
   // cursor feedback on hover
   map.on('pointermove', (e) => map.getTargetElement().style.cursor =
     map.hasFeatureAtPixel(e.pixel, {hitTolerance: 5}) ? 'pointer' : '');
@@ -387,9 +398,6 @@
     return [ glowDisk(r), neonRing(baseRadius + 2) ];
   }
 
-
-  // function updateMapSizeSoon() { setTimeout(() => map.updateSize(), 270); }
-
   function setBasemap(key) {
     Object.entries(baseLayers).forEach(([k, lyr]) => lyr.setVisible(k === key));
     basemapButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.basemap === key));
@@ -460,7 +468,6 @@
     }
   });
 
-
   function setFiltersOpen(open) {
     if (open) {
       // OPEN: set class, then measure on the next frame so layout is updated
@@ -502,8 +509,6 @@
     // drawer/map can ease toward the new top using your existing transitions
     setTimeout(() => map.updateSize(), 280);
   }
-
-
 
   btnFilters.addEventListener('click', () => setFiltersOpen(!filtersPanel.classList.contains('open')));
 
@@ -713,13 +718,6 @@
     return undefined;
   }
 
-
-  function abbrev(key){
-    if (!key) return '';
-    const k = String(key).toLowerCase().replace(/\s+/g,'');
-    return ASSET_ABBR.get(k) || k.slice(0,2).toUpperCase();
-  }
-
   // Build a compact horizontal bar chart from {assetType: count, ...}
   // Rules:
   //  - only show counts > 0
@@ -796,8 +794,6 @@
     wrap.appendChild(body);
     return wrap;
   }
-
-
 
   // ---------- Styling helpers ----------
   // POINT assets / endpoints with metadata and re-style support
@@ -968,66 +964,137 @@
     return line;
   }
 
-function addColoredPoint(lon, lat, color, labelText) {
-  if (lon == null || lat == null) return;
-  const feat = new ol.Feature({
-    geometry: new ol.geom.Point(ol.proj.fromLonLat([+lon, +lat])),
-    name: labelText || ''
-  });
-  feat.setStyle(new ol.style.Style({
-    image: dot(color),
-    text: labelText ? makeText(labelText) : undefined,
-    zIndex: 2
-  }));
-  pointsSource.addFeature(feat);
-}
+  // --- Pointer (red downward arrow) decoration over the selected marker ---
+  let _pointerCopy = null;
 
-// --- Pointer (red downward arrow) decoration over the selected marker ---
-let _pointerCopy = null;
-
-function clearPointer() {
-  if (_pointerCopy) {
-    try { prioritySource.removeFeature(_pointerCopy); } catch {}
-    _pointerCopy = null;
+  function clearPointer() {
+    if (_pointerCopy) {
+      try { prioritySource.removeFeature(_pointerCopy); } catch {}
+      _pointerCopy = null;
+    }
   }
-}
 
-function makePointerArrowStyle() {
-  // A small triangle pointing DOWN, displaced above the marker’s label
-  return new ol.style.Style({
-    image: new ol.style.RegularShape({
-      points: 3,                  // triangle
-      radius: 9,                  // size of pointer head
-      fill:  new ol.style.Fill({ color: '#ef4444' }),  // red
-      stroke:new ol.style.Stroke({ color: '#ffffff', width: 2 }), // white border
-      rotation: Math.PI,           // 180° so it points DOWN
-      displacement: [0, -33]
-    }),
-    // Lift the arrow above the marker/label (negative Y = up in OL screen space)
-    zIndex: 100
-  });
-}
+  function makePointerArrowStyle() {
+    // A small triangle pointing DOWN, displaced above the marker’s label
+    return new ol.style.Style({
+      image: new ol.style.RegularShape({
+        points: 3,                  // triangle
+        radius: 9,                  // size of pointer head
+        fill:  new ol.style.Fill({ color: '#ef4444' }),  // red
+        stroke:new ol.style.Stroke({ color: '#ffffff', width: 2 }), // white border
+        rotation: Math.PI,           // 180° so it points DOWN
+        displacement: [0, -33]
+      }),
+      // Lift the arrow above the marker/label (negative Y = up in OL screen space)
+      zIndex: 100
+    });
+  }
 
-/**
- * Place the pointer arrow *over* a specific POINT-like feature.
- * We render a copy in `priorityLayer` so it’s always-on-top and not decluttered.
- */
-function decorateWithPointerArrow(pointFeature) {
-  clearPointer();
+  /**
+   * Place the pointer arrow *over* a specific POINT-like feature.
+   * We render a copy in `priorityLayer` so it’s always-on-top and not decluttered.
+   */
+  function decorateWithPointerArrow(pointFeature) {
+    clearPointer();
 
-  const geom = pointFeature?.getGeometry?.();
-  if (!(geom instanceof ol.geom.Point)) return;
+    const geom = pointFeature?.getGeometry?.();
+    if (!(geom instanceof ol.geom.Point)) return;
 
-  const copy = new ol.Feature({ geometry: geom.clone() });
+    const copy = new ol.Feature({ geometry: geom });
 
-  // Respect current visual (badge / dot / label) and simply overlay the arrow
-  const base = pointFeature.getStyle?.();
-  const baseArr = Array.isArray(base) ? base : (base ? [base] : []);
-  copy.setStyle([...baseArr, makePointerArrowStyle()]);
+    // Respect current visual (badge / dot / label) and simply overlay the arrow
+    const base = pointFeature.getStyle?.();
+    const baseArr = Array.isArray(base) ? base : (base ? [base] : []);
+    copy.setStyle([...baseArr, makePointerArrowStyle()]);
 
-  prioritySource.addFeature(copy);
-  _pointerCopy = copy;
-}
+    prioritySource.addFeature(copy);
+    _pointerCopy = copy;
+  }
+
+  // --- Animated edit ring around editable markers (Edit mode only) ---
+  function stopEditHighlight() {
+    if (editHighlightTimer) {
+      clearInterval(editHighlightTimer);
+      editHighlightTimer = null;
+    }
+    if (editHighlightFeature) {
+      try { editHighlightSource.removeFeature(editHighlightFeature); } catch {}
+      editHighlightFeature = null;
+    }
+    editHighlightSource.clear();
+  }
+
+  /**
+   * Show a pulsing red ring around all editable markers (start/end/point)
+   * without changing their original style. This uses a MultiPoint feature
+   * rendered in a dedicated layer.
+   *
+   * @param {ol.Feature[]} targetFeatures - point-like features currently editable
+   */
+  function startEditHighlight(targetFeatures) {
+    stopEditHighlight();
+
+    const feats = (targetFeatures || []).filter(f => {
+      const g = f && f.getGeometry && f.getGeometry();
+      return g instanceof ol.geom.Point;
+    });
+    if (!feats.length) return;
+
+    // initial coords
+    const coords = feats
+      .map(f => f.getGeometry().getCoordinates())
+      .filter(Boolean);
+
+    if (!coords.length) return;
+
+    const geom = (coords.length === 1)
+      ? new ol.geom.Point(coords[0])
+      : new ol.geom.MultiPoint(coords);
+
+    editHighlightFeature = new ol.Feature({ geometry: geom });
+    editHighlightSource.addFeature(editHighlightFeature);
+
+    let radius = 10;
+    let growing = true;
+
+    editHighlightTimer = setInterval(() => {
+      if (!editHighlightFeature) return;
+
+      // 🔁 keep ring geometry in sync with live features
+      const liveCoords = feats
+        .map(f => {
+          const g = f && f.getGeometry && f.getGeometry();
+          return g && g.getCoordinates && g.getCoordinates();
+        })
+        .filter(Boolean);
+
+      if (liveCoords.length) {
+        const g = editHighlightFeature.getGeometry();
+        if (g instanceof ol.geom.Point && liveCoords.length === 1) {
+          g.setCoordinates(liveCoords[0]);
+        } else if (g instanceof ol.geom.MultiPoint && liveCoords.length > 1) {
+          g.setCoordinates(liveCoords);
+        }
+      }
+
+      // radius pulsing (same as before)
+      radius += growing ? 0.6 : -0.6;
+      if (radius >= 20) growing = false;
+      if (radius <= 10) growing = true;
+
+      const style = new ol.style.Style({
+        image: new ol.style.Circle({
+          radius,
+          fill: new ol.style.Fill({ color: 'rgba(239,68,68,0.10)' }),
+          stroke: new ol.style.Stroke({ color: '#ef4444', width: 2 })
+        }),
+        zIndex: 90
+      });
+
+      editHighlightFeature.setStyle(style);
+    }, 45);
+  }
+
 
 
   // ---------- Highlighting & Sidebar ----------
@@ -1450,7 +1517,6 @@ function decorateWithPointerArrow(pointFeature) {
     }
   });
 
-
   // ---------- Boot ----------
   (async function boot() {
     setBasemap('google_sat');
@@ -1680,7 +1746,6 @@ function decorateWithPointerArrow(pointFeature) {
 
     ensureDrawerEditStyles();
 
-
     function openDrawer(title, nodeOrHTML, opts = {}) {
       if (!drawer || !drawerTitle || !drawerBody) {
         console.warn('Drawer elements not found; showing console-only data.');
@@ -1767,6 +1832,45 @@ function decorateWithPointerArrow(pointFeature) {
       return tbl;
     }
 
+    function revertActiveEditorGeom() {
+      const ed = ACTIVE_EDITOR;
+      if (!ed || !ed.geomBindings) return;
+
+      const { geomBindings, inputsByKey, labelsByKey, dirtyKeys } = ed;
+
+      ['point', 'start', 'end'].forEach((key) => {
+        const b = geomBindings[key];
+        if (!b || !b.feature || !b.initialCoord) return;
+
+        const g = b.feature.getGeometry && b.feature.getGeometry();
+        if (g && g.setCoordinates) {
+          // avoid marking dirty for this revert sync
+          b._suppressDirtyOnce = true;
+          g.setCoordinates(b.initialCoord.slice());
+        }
+
+        // Reset marker style back to normal (but does NOT touch road highlight copies)
+        styleByFeatureReset(b.feature);
+
+        const { latKey, lonKey } = b;
+
+        if (latKey && inputsByKey[latKey]) {
+          const inp = inputsByKey[latKey];
+          const lbl = labelsByKey[latKey];
+          inp.classList.remove('field-coord-dirty');
+          lbl && lbl.classList.remove('field-label-dirty');
+          dirtyKeys.delete(latKey);
+        }
+        if (lonKey && inputsByKey[lonKey]) {
+          const inp = inputsByKey[lonKey];
+          const lbl = labelsByKey[lonKey];
+          inp.classList.remove('field-coord-dirty');
+          lbl && lbl.classList.remove('field-label-dirty');
+          dirtyKeys.delete(lonKey);
+        }
+      });
+    }
+
     // --- View/Edit section builder (generic) -------------------------------
     // --- View/Edit section builder (generic) -------------------------------
     function buildViewEditSection(kind, record, {
@@ -1777,6 +1881,7 @@ function decorateWithPointerArrow(pointFeature) {
       const root = document.createElement('div');
       root.className = 'drawer-edit';
       root.dataset.mode = EDIT_MODE || 'view';
+      let currentMode = EDIT_MODE || 'view';
 
       // Toggle bar
       const toggle = document.createElement('div');
@@ -1941,16 +2046,26 @@ function decorateWithPointerArrow(pointFeature) {
         const lonInput = inputsByKey[lonKey];
         if (!latInput || !lonInput) return;
 
+        // mark as coord fields
         latInput.classList.add('field-coord');
         lonInput.classList.add('field-coord');
 
-        // Lat/Lon are marker-controlled: read-only but selectable for copy
+        // Lat/Lon are marker-controlled: read-only but selectable
         latInput.readOnly = true;
         lonInput.readOnly = true;
         latInput.classList.add('field-coord-readonly');
         lonInput.classList.add('field-coord-readonly');
 
-        // Tiny infobox below BOTH latitude & longitude fields
+        // Store the original geometry so we can revert on cancel
+        const geom = feature.getGeometry && feature.getGeometry();
+        binding.initialCoord =
+          geom && geom.getCoordinates ? geom.getCoordinates().slice() : null;
+
+        // Internal flags to control dirty behaviour
+        binding._firstSynced = false;
+        binding._suppressDirtyOnce = false;
+
+        // Tiny hints below BOTH latitude & longitude fields
         const hintText = 'Move the map marker to change this location.';
         const latField = latInput.closest('.edit-field');
         if (latField && !latField.querySelector('.coord-hint')) {
@@ -1967,30 +2082,71 @@ function decorateWithPointerArrow(pointFeature) {
           lonField.appendChild(hint);
         }
 
-        // Marker → fields (dragging marker updates coords + marks them dirty)
+        // Marker → fields (dragging marker updates coords)
         function updateInputsFromFeature() {
-          const geom = feature.getGeometry && feature.getGeometry();
-          if (!geom || !(geom instanceof ol.geom.Point)) return;
-          const [lon, lat] = ol.proj.toLonLat(geom.getCoordinates());
+          const g = feature.getGeometry && feature.getGeometry();
+          if (!g || !(g instanceof ol.geom.Point)) return;
+
+          const [lon, lat] = ol.proj.toLonLat(g.getCoordinates());
           const latVal = lat.toFixed(6);
           const lonVal = lon.toFixed(6);
-          if (latInput.value !== latVal) {
-            latInput.value = latVal;
-            latInput.classList.add('field-coord-dirty');
-            updateDirtyState(latKey);
+
+          const changed =
+            latInput.value !== latVal || lonInput.value !== lonVal;
+
+          if (!changed) return;
+
+          latInput.value = latVal;
+          lonInput.value = lonVal;
+
+          // First sync OR specially-suppressed sync → NO dirty state
+          if (!binding._firstSynced || binding._suppressDirtyOnce) {
+            binding._firstSynced = true;
+            binding._suppressDirtyOnce = false;
+            latInput.classList.remove('field-coord-dirty');
+            lonInput.classList.remove('field-coord-dirty');
+            const latLbl = labelsByKey[latKey];
+            const lonLbl = labelsByKey[lonKey];
+            latLbl && latLbl.classList.remove('field-label-dirty');
+            lonLbl && lonLbl.classList.remove('field-label-dirty');
+            dirtyKeys.delete(latKey);
+            dirtyKeys.delete(lonKey);
+            return;
           }
-          if (lonInput.value !== lonVal) {
-            lonInput.value = lonVal;
-            lonInput.classList.add('field-coord-dirty');
-            updateDirtyState(lonKey);
+
+          // Real user drag after first sync → mark dirty
+          latInput.classList.add('field-coord-dirty');
+          lonInput.classList.add('field-coord-dirty');
+          updateDirtyState(latKey);
+          updateDirtyState(lonKey);
+          // 🔁 If this asset has a line feature (line-type asset),
+          // keep its LineString in sync with the S/E endpoints.
+          if (geomBindings && geomBindings.line && (geomBindings.start || geomBindings.end)) {
+            const line = geomBindings.line;
+            const sFeat = geomBindings.start && geomBindings.start.feature;
+            const eFeat = geomBindings.end && geomBindings.end.feature;
+
+            if (line && sFeat && eFeat) {
+              const sg = sFeat.getGeometry && sFeat.getGeometry();
+              const eg = eFeat.getGeometry && eFeat.getGeometry();
+              if (sg && eg && sg.getCoordinates && eg.getCoordinates) {
+                const sCoord = sg.getCoordinates();
+                const eCoord = eg.getCoordinates();
+                const lineGeom = line.getGeometry && line.getGeometry();
+                if (lineGeom && lineGeom.setCoordinates) {
+                  lineGeom.setCoordinates([sCoord, eCoord]);
+                }
+              }
+            }
           }
         }
 
         const changeKey = feature.on('change', updateInputsFromFeature);
         geomListeners.push({ feature, changeKey });
 
-        // initial sync from current marker position
+        // Initial sync from current marker position (no dirty flag)
         updateInputsFromFeature();
+        binding._firstSynced = true;
       }
 
       if (geomBindings) {
@@ -1998,6 +2154,7 @@ function decorateWithPointerArrow(pointFeature) {
         if (geomBindings.start) bindGeomField(geomBindings.start);
         if (geomBindings.end) bindGeomField(geomBindings.end);
       }
+
 
       // --- Hook into global ACTIVE_EDITOR ----------------------------------
       ACTIVE_EDITOR = {
@@ -2017,27 +2174,47 @@ function decorateWithPointerArrow(pointFeature) {
       };
 
       function setMode(mode) {
+        const prevMode = currentMode;
+        currentMode = mode;
         EDIT_MODE = mode;
         root.dataset.mode = mode;
         const isView = mode === 'view';
+
         btnView.classList.toggle('is-active', isView);
         btnEdit.classList.toggle('is-active', !isView);
 
         // enable/disable inputs
-        Object.values(inputsByKey).forEach(inp => {
+        Object.values(inputsByKey).forEach((inp) => {
           inp.disabled = isView;
         });
 
-        // update Modify interaction
+        // Always reset editableFeatures before reconfiguring
         editableFeatures.clear();
-        if (!geomBindings || isView) {
+
+        // Leaving EDIT → VIEW = cancel geometry changes for coords
+        if (prevMode === 'edit' && mode === 'view') {
+          revertActiveEditorGeom();
+        }
+
+        // VIEW mode: no Modify, no edit pulse (but keep red arrow + declutter)
+        if (!geomBindings || mode === 'view') {
           modifyInteraction.setActive(false);
+          stopEditHighlight();
           return;
         }
-        ['point', 'start', 'end'].forEach(key => {
+
+        // EDIT mode:
+        //  - keep road highlight + red pointer as-is
+        //  - enable Modify and add animated red ring around editable markers
+        const editTargets = [];
+        ['point', 'start', 'end'].forEach((key) => {
           const b = geomBindings[key];
-          if (b && b.feature) editableFeatures.push(b.feature);
+          if (!b || !b.feature) return;
+          editableFeatures.push(b.feature);
+          editTargets.push(b.feature);
         });
+
+        startEditHighlight(editTargets);
         modifyInteraction.setActive(true);
       }
 
@@ -2049,7 +2226,6 @@ function decorateWithPointerArrow(pointFeature) {
 
       return root;
     }
-
 
     // --- Detect lat/lon field names and match them to map features ----------
     function detectGeomBindingsForRoad(roadObj, roadId) {
@@ -2089,14 +2265,24 @@ function decorateWithPointerArrow(pointFeature) {
       const keys = Object.keys(assetObj);
       const matchKey = (re) => keys.find(k => re.test(k));
 
-      const latKey     = matchKey(/^lat$|latitude/i);
-      const lonKey     = matchKey(/^lon$|^lng$|longitude/i);
-      const startLat   = matchKey(/start.*lat|lat.*start/i);
-      const startLon   = matchKey(/start.*lon|lon.*start/i);
-      const endLat     = matchKey(/end.*lat|lat.*end/i);
-      const endLon     = matchKey(/end.*lon|lon.*end/i);
+      // Base matches
+      const latKeyRaw = matchKey(/^lat$|latitude/i);
+      const lonKeyRaw = matchKey(/^lon$|^lng$|longitude/i);
+      const startLat  = matchKey(/start.*lat|lat.*start/i);
+      const startLon  = matchKey(/start.*lon|lon.*start/i);
+      const endLat    = matchKey(/end.*lat|lat.*end/i);
+      const endLon    = matchKey(/end.*lon|lon.*end/i);
 
-      // First try: single point asset
+      let latKey = latKeyRaw;
+      let lonKey = lonKeyRaw;
+
+      // 👇 Point-only assets that use end_lat/end_lon (e.g. patch_condition)
+      if (!latKey && !lonKey && !startLat && !startLon && endLat && endLon) {
+        latKey = endLat;
+        lonKey = endLon;
+      }
+
+      // --- Single point asset (normal point or patch_condition-style) ---
       if (latKey && lonKey) {
         const feature = pointsSource.getFeatures().find(f =>
           f.get('asset_kind') === 'point' &&
@@ -2109,7 +2295,13 @@ function decorateWithPointerArrow(pointFeature) {
         }
       }
 
-      // Second: line asset with S/E endpoints
+      // --- Line asset → find its LineString feature too ---
+      const lineFeature = linesSource.getFeatures().find(f =>
+        f.get('asset_kind') === 'line' &&
+        String(f.get('id') || '') === String(assetObj.id)
+      );
+
+      // True line: has start_* and end_* keys
       if (startLat && startLon && endLat && endLon) {
         const endpoints = pointsSource.getFeatures().filter(f =>
           f.get('kind') === 'line-endpoint' &&
@@ -2121,22 +2313,17 @@ function decorateWithPointerArrow(pointFeature) {
           if (badge === 'S') startFeat = f;
           if (badge === 'E') endFeat = f;
         });
+
         return {
           start: (startFeat ? { latKey: startLat, lonKey: startLon, feature: startFeat } : null),
-          end:   (endFeat   ? { latKey: endLat, lonKey: endLon, feature: endFeat }   : null)
+          end:   (endFeat   ? { latKey: endLat,  lonKey: endLon,  feature: endFeat   } : null),
+          line:  lineFeature || null
         };
       }
 
       return null;
     }
 
-
-
-    async function fetchRoad(roadId) {
-      const res = await fetch(`/api/road/${roadId}/`); // no assets by default (fast)
-      if (!res.ok) throw new Error('road fetch failed');
-      return res.json();
-    }
     async function fetchRoadAssetsOnce(roadId) {
       // pull all asset types for a single road to ensure we can highlight
       const url = new URL(location.origin + "/api/assets/");
@@ -2239,6 +2426,7 @@ function decorateWithPointerArrow(pointFeature) {
           `translate(${_offsetX}px, ${_offsetY}px) scale(${_scale}) rotate(${_deg}deg)`;
       }
     }
+
     function onLightboxWheel(e) {
       e.preventDefault();
       const delta = e.deltaY || e.wheelDelta || 0;
@@ -2407,8 +2595,6 @@ function decorateWithPointerArrow(pointFeature) {
       return makeCollapsibleSection('🏷️ Metadata', grid, { open: false, titleFontSize: '16px' });
     }
 
-
-
     // --- Drawer gallery helper: open images in modal + collapsible -------------
     function makeGallery(urls = [], title = '🖼️ Images') {
       const wrap = document.createElement('div');
@@ -2436,15 +2622,6 @@ function decorateWithPointerArrow(pointFeature) {
       wrap.appendChild( makeCollapsibleSection(title, grid, { open: true, titleFontSize: '16px' }) );
       return wrap;
     }
-  
-
-    // Highlight helpers
-    const defaultPointStyle = new ol.style.Style({ image: dot('#7c3aed', 6) });
-    const defaultLineStyle  = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#fb923c', width: 3 }) });
-    const hiPointStyle      = new ol.style.Style({ image: dot('#111827', 7) });
-    const hiLineStyle       = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#111827', width: 4.5 }) });
-    const roadEndStartStyle = { start: new ol.style.Style({ image: dot('#22c55e', 6) }),
-                                end:   new ol.style.Style({ image: dot('#ef4444', 6) }) };
 
     function styleByFeatureReset(f) {
       const kind = f.get('kind');
@@ -2489,54 +2666,6 @@ function decorateWithPointerArrow(pointFeature) {
           }) : undefined
         }));
       }
-    }
-
-    // --- Glow helpers ---
-    // shared filters via CSS variable; re-applied through ol style
-    const glowFilter = 'drop-shadow(0 0 5px #00ffff) drop-shadow(0 0 10px #00ffff)';
-    const blurStroke  = new ol.style.Stroke({ color: '#00ffff', width: 5, lineCap: 'round', lineJoin: 'round' });
-    const glowStroke  = new ol.style.Stroke({ color: '#00ffff', width: 3 });
-    const faintStroke = new ol.style.Stroke({ color: 'rgba(0,0,0,0.2)', width: 2 });
-
-    // blurred halo circle
-    function glowDot(color = '#00ffff', radius = 7) {
-      return new ol.style.RegularShape({
-        points: 30,
-        radius: radius,
-        fill: new ol.style.Fill({ color }),
-        stroke: new ol.style.Stroke({ color, width: 1 }),
-      });
-    }
-
-    // Apply NEON overlays *on top of* the base style; preserves labels & base colors
-    function styleByFeatureHighlight(f) {
-      // First, configure the base identity style
-      styleByFeatureReset(f);
-      const base = f.getStyle();
-      const baseArr = Array.isArray(base) ? base : [base];
-
-      // Add glow overlays in front of (or behind) the base
-      if (f.get('kind') === 'line') {
-        // Glow underlays go first, then base orange stroke on top
-        f.setStyle([ ...lineGlow(3), ...baseArr ]);
-        return;
-      }
-
-      if (f.get('feature_type') === 'road_endpoint') {
-        // Keep green/red endpoint + add teal glow ring around it
-        const name = f.get('name') || 'S';
-        f.setStyle([ ...glowOverlaysForPoint('road-endpoint', 6), ...baseArr ]);
-        return;
-      }
-
-      if (f.get('kind') === 'line-endpoint') {
-        // Keep blue badge + glow around it
-        f.setStyle([ ...glowOverlaysForPoint('line-endpoint', 6), ...baseArr ]);
-        return;
-      }
-
-      // Regular asset point: keep purple dot & label; add teal ring + soft glow
-      f.setStyle([ ...glowOverlaysForPoint('point', 6), ...baseArr ]);
     }
 
     function highlightRoadById(roadId) {
@@ -2601,9 +2730,6 @@ function decorateWithPointerArrow(pointFeature) {
       return any;
     }
 
-
-
-
     if (map.__clickBound) return;
     map.__clickBound = true;
 
@@ -2614,6 +2740,12 @@ function decorateWithPointerArrow(pointFeature) {
       if (!feat) {
         // click on empty map -> close drawer and reset highlight
         if (drawer) closeDrawer();
+
+        // If user was in Edit mode and dragged markers but didn't save,
+        // snap them back to their original geometry.
+        revertActiveEditorGeom();
+        stopEditHighlight();
+
         pointsSource.getFeatures().forEach(styleByFeatureReset);
         linesSource.getFeatures().forEach(styleByFeatureReset);
         clearSelectedCopies(); // also remove mirrored "always-visible" points

@@ -143,6 +143,82 @@
                 aria-haspopup="dialog" aria-controls="layer-modal" title="Add Layer to Map">
           ➕🗺️ Add Layer
         </button>
+
+        <!-- Measurement tool: sits right beside Add Layer -->
+        <div class="map-tool map-tool--measure">
+          <button
+            type="button"
+            id="map-measure-toggle"
+            class="btn btn-outline map-tool-btn"
+            title="Measure distance / area"
+          >
+            📏 Measurement
+          </button>
+
+          <div
+            id="map-measure-panel"
+            class="map-tool-dropdown map-measure-dropdown is-hidden"
+          >
+            <div class="map-measure-row">
+              <label class="map-measure-label">Measurement type</label>
+              <select id="map-measure-type" class="map-measure-select">
+                <option value="LineString">Length (LineString)</option>
+                <option value="Polygon">Area (Polygon)</option>
+              </select>
+            </div>
+
+            <div class="map-measure-row">
+              <label class="map-measure-checkbox">
+                <input
+                  type="checkbox"
+                  id="map-measure-segments"
+                  checked
+                />
+                <span>Show segment lengths</span>
+              </label>
+            </div>
+
+            <div class="map-measure-row">
+              <label class="map-measure-checkbox">
+                <input
+                  type="checkbox"
+                  id="map-measure-clear-previous"
+                  checked
+                />
+                <span>Clear previous measure</span>
+              </label>
+            </div>
+
+            <div class="map-measure-row map-measure-actions">
+              <button
+                type="button"
+                id="map-measure-start"
+                class="map-measure-btn map-measure-btn--primary"
+              >
+                Start
+              </button>
+
+              <button
+                type="button"
+                id="map-measure-stop"
+                class="map-measure-btn"
+                disabled
+              >
+                Stop
+              </button>
+            </div>
+
+            <div class="map-measure-row">
+              <button
+                type="button"
+                id="map-measure-clear-all"
+                class="map-measure-btn map-measure-btn--danger"
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="filters-tools-row">
@@ -152,6 +228,8 @@
           ➕📍 Add Marker
         </button>
       </div>
+
+
     </div>
   </div>
 </section>
@@ -192,8 +270,6 @@
     </div>
   </div>
 
-
-
   <!-- Right detail drawer -->
   <aside id="detail-drawer" class="drawer" aria-hidden="true">
     <header class="drawer-head">
@@ -205,13 +281,13 @@
     </div>
   </aside>
 
-
   <!-- Dashboard logic -->
   <script defer src="{% static 'dashboard.js' %}"></script>
   <!-- Add-Layer logic (after dashboard so it can see the map) -->
   <script defer src="{% static 'layers.js' %}"></script>
   <!-- Add-Marker logic (similar to Add-Layer modal) -->
   <script defer src="{% static 'markers.js' %}"></script>
+  <script defer src="{% static 'measure-tools.js' %}"></script>
 
 <!-- Add Layer Modal -->
 <div id="layer-modal" class="layer-modal" aria-hidden="true">

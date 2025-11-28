@@ -118,7 +118,8 @@ body.drawer-open #map {
 
 /* Make Add Layer and Add Marker look identical and compact */
 #btn-add-layer,
-#btn-add-marker {
+#btn-add-marker,
+ #map-tool-btn {
   padding: 6px 10px;
   font-size: 11px;
   display: inline-flex;
@@ -238,6 +239,7 @@ body.drawer-open #map {
 .map-layers-toggle:hover {
   background: #f3f4f6;
 }
+
 
 /* Floating panel for layers & markers */
 .map-layers-panel {
@@ -837,7 +839,7 @@ body.drawer-open #map {
 .filters-form #filter-district {
   font-size: 11px;
   padding: 5px 9px;      /* tighter padding */
-  height: 30px;          /* matches compact buttons */
+  height: 28px;          /* matches compact buttons */
   line-height: 1.2;
 }
 
@@ -861,11 +863,105 @@ body.drawer-open #map {
   background: #f7f7f9;          /* visible while tiles load */
 }
 
+/* Fullscreen control: leave space on the right for the reset-north/rotate icon */
+#map .ol-full-screen {
+  top: 8px;
+  right: 40px;   /* shifted left; rightmost slot stays free for recenter */
+}
+
+/* Make sure the map fills the screen nicely in fullscreen mode */
+#map:-webkit-full-screen {
+  height: 100%;
+  margin: 0;
+}
+
+#map:fullscreen {
+  height: 100%;
+}
+
+/* --- Overview Map (mini-map) bottom-right above Google credits --- */
+#map .ol-overviewmap.ol-custom-overviewmap,
+#map .ol-overviewmap.ol-custom-overviewmap.ol-uncollapsible {
+  position: absolute;
+  bottom: 24px !important;  /* slightly above Google/OL attributions */
+  right: 4px !important;
+  left: auto !important;
+  top: auto !important;
+  z-index: 20;
+}
+
+#map .ol-overviewmap.ol-custom-overviewmap .ol-overviewmap-map {
+  width: 220px;
+  height: 160px;
+  border-radius: 4px;
+}
+
+#map .ol-overviewmap.ol-custom-overviewmap:not(.ol-collapsed) {
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+}
+
+#map .ol-overviewmap.ol-custom-overviewmap .ol-overviewmap-box {
+  border: 2px solid #ff0000;  /* golden-yellow box for current view */
+}
+
+/* Base button reset */
+#map .ol-overviewmap.ol-custom-overviewmap button {
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  border: none !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 4px !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: 14px 14px !important;
+
+  /* 🔽 kill default text + any built-in sprite */
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background-image: none !important;
+}
+
+
+/* OPEN → show ">" icon */
+#map .ol-overviewmap.ol-custom-overviewmap:not(.ol-collapsed) button {
+  background-image: url("/static/greater-than-icon.png") !important;
+}
+
+/* COLLAPSED → show "<" icon */
+#map .ol-overviewmap.ol-custom-overviewmap.ol-collapsed button {
+  background-image: url("/static/less-than-icon.png") !important;
+}
+
+
+
+/* --- Mouse Position: show EPSG:4326 coords near the scale/zoom length --- */
+/* --- Mouse Position: show EPSG:4326 coords near the scale/zoom length --- */
+#map .ol-mouse-position {
+  position: absolute;
+  bottom: 32px !important;   /* same vertical zone as scale line */
+  left: 5px !important;   /* nudged right so it sits beside the scale */
+  top: auto !important;
+  right: auto !important;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #111827;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+
+
+
 /* Small layers icon button over the map (top-right) */
 .map-layers-toggle {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 35px;
+  right: 8px;
   z-index: 10;
   border: 1px solid #cfd3d8;
   background: #ffffff;
@@ -1085,3 +1181,106 @@ body.drawer-open #map {
 .imglightbox__tools{display:flex;gap:8px;justify-content:flex-end}
 .imglightbox__btn{border:1px solid #374151;background:#1f2937;color:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
 .imglightbox__btn:hover{background:#111827}
+
+
+/* MAP MEASURE TOOL */
+
+.map-tool {
+  position: relative;
+}
+
+/* Reuse global .btn/.btn-outline look; just tweak sizing */
+.map-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;    /* similar to Add Layer / Marker */
+  font-size: 12px;
+  gap: 4px;
+  line-height: 1;
+}
+
+.map-tool-btn:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+/* Dropdown: compact + small font */
+.map-tool-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);   /* just below the Measurement button */
+  left: 0;
+  z-index: 50;             /* above filters panel content */
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid #d0d4db;
+  background: #ffffff;
+  font-size: 11px;
+  margin-top: 0;           /* ensure it doesn’t push layout */
+}
+
+.map-tool-dropdown.is-hidden {
+  display: none;
+}
+
+.map-measure-row {
+  margin-bottom: 4px;
+}
+
+.map-measure-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+.map-measure-select {
+  width: 100%;
+  padding: 3px 6px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid #cfd3d8;
+}
+
+.map-measure-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.map-measure-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Buttons inside dropdown: compact, similar feel to other btns */
+.map-measure-btn {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid #d0d4db;
+  background: #f3f4f8;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.map-measure-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.map-measure-btn--primary {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+
+.map-measure-btn--danger {
+  width: 100%;
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+

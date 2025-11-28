@@ -164,6 +164,25 @@
   const linesSource  = new ol.source.Vector();
   const linesLayer   = new ol.layer.Vector({ source: linesSource,  declutter: true, zIndex: 10 });
 
+  // --- Overview Map control (bottom-right mini-map) ---
+  const overviewMapControl = new ol.control.OverviewMap({
+    className: 'ol-overviewmap ol-custom-overviewmap',
+    collapsed: false,        // keep it open
+    rotateWithView: false,   // always false as requested
+    layers: [
+      new ol.layer.Tile({
+        source: new ol.source.OSM(), // simple basemap for overview
+      }),
+    ],
+  });
+
+  // --- Mouse Position control (EPSG:4326, 6 decimal places) ---
+  const mousePositionControl = new ol.control.MousePosition({
+    coordinateFormat: ol.coordinate.createStringXY(6),
+    projection: 'EPSG:4326',
+    // no target => render inside map container like other controls
+  });
+
   const map = new ol.Map({
     target: "map",
     layers: [
@@ -186,11 +205,59 @@
   map.addControl(new ol.control.ScaleLine());
   map.addControl(new ol.control.ZoomSlider());
   map.addControl(new ol.control.Rotate());
+  map.addControl(new ol.control.FullScreen());
+  map.addControl(overviewMapControl);
+  map.addControl(mousePositionControl);
   // --- Shared Modify interaction for editing points (road/asset endpoints) ---
   const editableFeatures = new ol.Collection();
   const modifyInteraction = new ol.interaction.Modify({
     features: editableFeatures,
   });
+  // --- Drag-rotate-and-zoom (Ctrl + drag) ---
+  const dragRotateAndZoom = new ol.interaction.DragRotateAndZoom({
+    // Use Ctrl+drag instead of the default Shift+drag
+    condition: function (mapBrowserEvent) {
+      const evt = mapBrowserEvent.originalEvent;
+      if (!evt) return false;
+      // Ctrl only (no Shift / Alt) so it doesn't clash with your Shift+drag box zoom
+      return evt.ctrlKey && !evt.shiftKey && !evt.altKey;
+    },
+  });
+  // --- Reset-to-North button logic ---
+  const view = map.getView();
+  const resetNorthBtn = document.getElementById('map-reset-north');
+
+  function updateResetNorthVisibility() {
+    if (!resetNorthBtn) return;
+    const rot = view.getRotation() || 0;
+    if (Math.abs(rot) > 1e-3) {
+      resetNorthBtn.classList.add('visible');
+      resetNorthBtn.setAttribute('aria-hidden', 'false');
+    } else {
+      resetNorthBtn.classList.remove('visible');
+      resetNorthBtn.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  // Show/hide whenever rotation changes (e.g. via Ctrl+drag or touch gestures)
+  view.on('change:rotation', updateResetNorthVisibility);
+
+  // Click: animate back to north-up
+  if (resetNorthBtn) {
+    resetNorthBtn.addEventListener('click', () => {
+      view.animate({
+        rotation: 0,
+        duration: 250,
+        easing: ol.easing.easeOut,
+      });
+    });
+  }
+
+  // Ensure correct initial state
+  updateResetNorthVisibility();
+
+
+  map.addInteraction(dragRotateAndZoom);
   map.addInteraction(modifyInteraction);
   modifyInteraction.setActive(false);
 
@@ -1869,9 +1936,31 @@
           dirtyKeys.delete(lonKey);
         }
       });
+
+      // NEW: also revert line geometry for line-type assets
+      if (geomBindings.line && geomBindings.start && geomBindings.end) {
+        const line   = geomBindings.line;
+        const sFeat  = geomBindings.start.feature;
+        const eFeat  = geomBindings.end.feature;
+
+        if (line && sFeat && eFeat) {
+          const sg = sFeat.getGeometry && sFeat.getGeometry();
+          const eg = eFeat.getGeometry && eFeat.getGeometry();
+
+          if (sg && eg && sg.getCoordinates && eg.getCoordinates) {
+            const lineGeom = line.getGeometry && line.getGeometry();
+            if (lineGeom && lineGeom.setCoordinates) {
+              // line back to the coordinates of reverted endpoints
+              lineGeom.setCoordinates([
+                sg.getCoordinates(),
+                eg.getCoordinates()
+              ]);
+            }
+          }
+        }
+      }
     }
 
-    // --- View/Edit section builder (generic) -------------------------------
     // --- View/Edit section builder (generic) -------------------------------
     function buildViewEditSection(kind, record, {
       extraSkip = [],

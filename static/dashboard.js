@@ -1594,6 +1594,41 @@
     renderAssetsList();
     setAssetsUIByMode('none');
 
+    // --- Custom layers section (Add Layer button + chips container) ----------
+    // We build this HTML here so layers.js can just query:
+    //   #btn-add-layer  -> opens the upload modal
+    //   #layer-toggles  -> where per-layer chips are rendered
+    if (mapLayersPanel && !document.getElementById('layer-toggles')) {
+      const section = document.createElement('div');
+      section.className = 'map-layers-section map-layers-section--custom';
+
+      const head = document.createElement('div');
+      head.className = 'map-layers-section-head';
+
+      const title = document.createElement('div');
+      title.className = 'map-layers-section-title';
+      title.textContent = 'Custom layers';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.id = 'btn-add-layer';
+      addBtn.className = 'layer-chip';
+      addBtn.textContent = '＋ Add layer';
+
+      head.appendChild(title);
+      head.appendChild(addBtn);
+
+      const list = document.createElement('div');
+      list.id = 'layer-toggles';
+      list.className = 'layer-toggles';
+
+      section.appendChild(head);
+      section.appendChild(list);
+
+      // Append after any existing content (e.g. basemap controls)
+      mapLayersPanel.appendChild(section);
+    }
+
     // Roads refresh when district changes
     districtSel.addEventListener('change', () => loadRoadsByDistrict(districtSel.value));
 

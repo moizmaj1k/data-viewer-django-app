@@ -1857,8 +1857,14 @@
       drawerTitle.innerHTML = '';
       const wrap = document.createElement('div');
       wrap.className = 'drawer-title-wrap';
+      const titleRow = document.createElement('div');
+      titleRow.className = 'drawer-title-row';
       const h = document.createElement('div');
       h.textContent = title || 'Details';
+      titleRow.appendChild(h);
+      if (opts && opts.status) {
+        titleRow.appendChild(makeStatusChip(opts.status));
+      }
       const metaCol = document.createElement('div');
       // ID line
       if (opts && opts.id != null) {
@@ -1887,7 +1893,7 @@
         sub2.innerHTML = `District: <code>${String(opts.district)}</code>`;
         metaCol.appendChild(sub2);
       }
-      wrap.appendChild(h);
+      wrap.appendChild(titleRow);
       if (metaCol.childNodes.length) wrap.appendChild(metaCol);
       drawerTitle.appendChild(wrap);
       drawerBody.innerHTML = '';
@@ -1932,6 +1938,37 @@
         tbl.appendChild(tr);
       });
       return tbl;
+    }
+
+    const CLEANING_STATUS_MAP = {
+      pending: { label: 'Pending', icon: '⚠️' },
+      good: { label: 'Good', icon: '✅' },
+      bad: { label: 'Bad', icon: '⛔' }
+    };
+
+    function parseCleaningStatus(remarks) {
+      const raw = (remarks == null ? '' : String(remarks)).trim();
+      if (!raw.startsWith('{{')) {
+        return { status: 'pending' };
+      }
+      const endIdx = raw.indexOf('}}');
+      if (endIdx === -1) {
+        return { status: 'pending' };
+      }
+      const block = raw.slice(2, endIdx).trim();
+      const match = block.match(/status\s*:\s*(pending|good|bad)/i);
+      if (!match) {
+        return { status: 'pending' };
+      }
+      return { status: match[1].toLowerCase() };
+    }
+
+    function makeStatusChip(statusKey) {
+      const cfg = CLEANING_STATUS_MAP[statusKey] || CLEANING_STATUS_MAP.pending;
+      const chip = document.createElement('span');
+      chip.className = `status-chip status-chip--${(statusKey || 'pending')}`;
+      chip.textContent = `${cfg.icon} ${cfg.label}`;
+      return chip;
     }
 
     function revertActiveEditorGeom() {
@@ -2924,9 +2961,11 @@
           });
           panel.appendChild(veSection);
 
+          const roadStatus = parseCleaningStatus(payload.road?.remarks);
           openDrawer(payload.road.name || 'Road', panel, {
             id: payload.road?.id,
-            district: payload.road?.district ?? payload.road?.district_code ?? payload.road?.district_name
+            district: payload.road?.district ?? payload.road?.district_code ?? payload.road?.district_name,
+            status: roadStatus.status
           });
           decorateWithPointerArrow(feat);
           return;
@@ -2965,9 +3004,11 @@
           });
           panel.appendChild(veSection);
 
+          const assetStatus = parseCleaningStatus(asset.remarks);
           openDrawer(`${(asset.type || 'Asset').toString().toUpperCase()}`, panel, {
             id: asset.id,
-            district: asset.district ?? asset.district_code ?? asset.district_name
+            district: asset.district ?? asset.district_code ?? asset.district_name,
+            status: assetStatus.status
           });
           // If the user clicked a point-like thing, decorate it directly
           if (feat.get('kind') === 'point' || feat.get('kind') === 'line-endpoint') {

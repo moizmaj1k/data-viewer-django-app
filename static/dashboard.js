@@ -1739,6 +1739,20 @@
           padding-right: 28px;
         }
 
+        /* Cleaning Status dropdown colour hints */
+        .cleaning-status-select.status--pending {
+          background-color: #fefce8; /* soft yellow */
+          border-color: #facc15;
+        }
+        .cleaning-status-select.status--good {
+          background-color: #dcfce7; /* light green */
+          border-color: #16a34a;
+        }
+        .cleaning-status-select.status--bad {
+          background-color: #fee2e2; /* light red */
+          border-color: #f97316;
+        }
+
         .edit-field input.field-coord-dirty {
           background: #fef2f2;
           border-color: #b91c1c;
@@ -2076,6 +2090,12 @@
       const labelsByKey = {};
       const dirtyKeys = new Set();
 
+      // Derive initial cleaning status from remarks (default: pending)
+      const initialRemarks = (record && record.remarks) || '';
+      const { status: initialCleaningStatus } = parseCleaningStatus(initialRemarks);
+      // pseudo-field used only for UI dirty tracking of the dropdown
+      original.__cleaning_status = initialCleaningStatus;
+
       // Build kvPairs from record (label + value) while respecting SKIP
       const kvPairs = {};
       Object.entries(record || {}).forEach(([key, value]) => {
@@ -2086,6 +2106,7 @@
         kvPairs[key] = { label: niceLabel, value };
         original[key] = value == null ? '' : String(value);
       });
+    
 
       // Build edit fields
       Object.entries(kvPairs).forEach(([key, { label, value }]) => {
@@ -2170,6 +2191,113 @@
           control.addEventListener('change', dirtyHandler);
         }
       });
+
+      // Cleaning Status dropdown — tied to "remarks" text via {{status:*}} block
+      const remarksControl = inputsByKey.remarks;
+      if (remarksControl) {
+        const statusField = document.createElement('div');
+        statusField.className = 'edit-field edit-field--cleaning-status';
+
+        const statusLabel = document.createElement('label');
+        statusLabel.textContent = 'Cleaning Status';
+        statusField.appendChild(statusLabel);
+        labelsByKey.__cleaning_status = statusLabel;
+
+        const select = document.createElement('select');
+        select.className = 'edit-select cleaning-status-select';
+
+        ['pending', 'good', 'bad'].forEach((key) => {
+          const opt = document.createElement('option');
+          opt.value = key;
+          const cfg = CLEANING_STATUS_MAP[key] || { label: key };
+          opt.textContent = cfg.label;
+          select.appendChild(opt);
+        });
+
+        // Initial value from remarks / parseCleaningStatus
+        select.value = initialCleaningStatus || 'pending';
+        statusField.appendChild(select);
+
+        // Place the Cleaning Status field right before the remarks field
+        const remarksFieldDiv = remarksControl.closest('.edit-field');
+        if (remarksFieldDiv && remarksFieldDiv.parentNode === grid) {
+          grid.insertBefore(statusField, remarksFieldDiv);
+        } else {
+          grid.appendChild(statusField);
+        }
+
+        // Hook into the generic editor maps
+        inputsByKey.__cleaning_status = select;
+
+        function syncStatusSelectClass() {
+          select.classList.remove(
+            'status--pending',
+            'status--good',
+            'status--bad'
+          );
+          const v = select.value || 'pending';
+          select.classList.add(`status--${v}`);
+        }
+        syncStatusSelectClass();
+
+        function rewriteRemarksForStatus(nextStatus) {
+          const control = remarksControl;
+          if (!control) return;
+
+          const currentText = control.value || '';
+          const trimmed = currentText.trimStart();
+          const hasBlock =
+            trimmed.startsWith('{{') && trimmed.indexOf('}}') !== -1;
+
+          // Strip any existing leading {{status:*}} block first
+          let baseText = currentText;
+          if (hasBlock) {
+            const leadingLen = currentText.length - trimmed.length; // preserve leading whitespace
+            const endIdx = trimmed.indexOf('}}');
+            const after = trimmed.slice(endIdx + 2).replace(/^\s*/, '');
+            baseText = currentText.slice(0, leadingLen) + after;
+          }
+
+          if (nextStatus === 'pending') {
+            // Behaviour: "pending" means no explicit {{status:*}} block
+            // - If there was no block, leave remarks as-is.
+            // - If there WAS a block (good/bad), we keep the stripped base text.
+            const newText = hasBlock ? baseText : currentText;
+            if (newText !== control.value) {
+              control.value = newText;
+              updateDirtyState('remarks');
+            }
+            return;
+          }
+
+          const cfg = CLEANING_STATUS_MAP[nextStatus];
+          if (!cfg) return;
+
+          const trimmedBase = baseText.trimStart();
+          const leadingLen = baseText.length - trimmedBase.length;
+          const leading = baseText.slice(0, leadingLen);
+          const block = `{{status:${nextStatus}}}`;
+
+          const newText = trimmedBase
+            ? `${leading}${block} ${trimmedBase}`
+            : `${leading}${block}`;
+
+          if (newText !== control.value) {
+            control.value = newText;
+            updateDirtyState('remarks');
+          }
+        }
+
+        const statusDirtyHandler = () => {
+          syncStatusSelectClass();
+          // Update remarks text with the new status block (if needed)
+          rewriteRemarksForStatus(select.value || 'pending');
+          // Mark the dropdown label dirty when it differs from original
+          updateDirtyState('__cleaning_status');
+        };
+
+        select.addEventListener('change', statusDirtyHandler);
+      }
 
       // Compare against original values using getControlValue()
       function updateDirtyState(key) {

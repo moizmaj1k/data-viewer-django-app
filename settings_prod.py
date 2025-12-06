@@ -3,7 +3,7 @@ from .settings import *
 
 DEBUG = False
 
-ALLOWED_HOSTS = ["your-domain.com", "www.your-domain.com", "server-ip"]
+ALLOWED_HOSTS = ["your-domain.com", "www.your-domain.com", "142.93.219.70"]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://your-domain.com",

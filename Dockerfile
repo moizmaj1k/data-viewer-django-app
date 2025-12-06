@@ -17,11 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Environment
-ENV DJANGO_SETTINGS_MODULE=rams_ssr.settings_prod \
+ENV DJANGO_SETTINGS_MODULE=settings_prod \
     PYTHONUNBUFFERED=1
 
 # Collect static at build time
 RUN python manage.py collectstatic --noinput
 
 # Gunicorn entrypoint
-CMD ["gunicorn", "project.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+CMD ["gunicorn", "rams.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]

@@ -1,19 +1,20 @@
-# project/settings_prod.py
-from .settings import *
+from rams.settings import *  # import all base settings
+
+import os
 
 DEBUG = False
 
-ALLOWED_HOSTS = ["your-domain.com", "www.your-domain.com", "142.93.219.70"]
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://your-domain.com",
-    "https://www.your-domain.com",
+ALLOWED_HOSTS = [
+    "142.93.219.70",  # your droplet IP
+    "localhost",
 ]
 
-# Use env vars for secrets & DB
-import os
+CSRF_TRUSTED_ORIGINS = [
+    "http://142.93.219.70",
+    "http://localhost",
+]
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "change-me")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "change-me-in-env")
 
 DATABASES = {
     "default": {

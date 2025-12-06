@@ -23,11 +23,11 @@ services:
       - "80:80"
       # later: "443:443" when you add HTTPS
     volumes:
+      # main nginx config (the one you showed me earlier)
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      # same volume + same path as web
+
+      # shared static volume
       - static_volume:/app/staticfiles:ro
-      # nginx config file
-      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - web
 

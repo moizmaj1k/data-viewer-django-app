@@ -1,5 +1,7 @@
 import os
 from django.http import JsonResponse, Http404
+from django.views.decorators.http import require_http_methods
+import json
 from django.shortcuts import render
 from django.db.models import CharField
 from django.db.models.functions import Cast
@@ -237,22 +239,44 @@ def api_assets(request):
 
     return JsonResponse({'assets': assets_out})
 
-# -----------------------
-# NEW: Road detail dump
-# -----------------------
-def api_road_detail(request, road_id): 
+@require_http_methods(["GET", "POST"])
+def api_road_detail(request, road_id):
     """
     GET /api/road/<uuid>/
       -> { road, counts }                      (default: counts only)
     GET /api/road/<uuid>/?include=counts
       -> { road, counts }                      (explicit counts-only)
     GET /api/road/<uuid>/?include=assets
-      -> { road, counts, assets:[...] }        (heavy)
+      -> { road, counts, assets:[.] }        (heavy)
+
+    POST /api/road/<uuid>/
+      JSON body with partial fields to update, e.g.:
+      { "remarks": "...", "start_lat": 33.123, "start_lon": 72.456 }
     """
     try:
         road = BackEndRoad.objects.get(id=road_id)
     except BackEndRoad.DoesNotExist:
         raise Http404("Road not found")
+
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        allowed = {f.name for f in BackEndRoad._meta.fields if f.editable}
+        updated_fields = []
+
+        for key, val in payload.items():
+            if key not in allowed:
+                continue
+            setattr(road, key, val)
+            updated_fields.append(key)
+
+        if updated_fields:
+            road.save(update_fields=updated_fields)
+
+        return JsonResponse({"ok": True, "updated": updated_fields})
 
     road_data = safe_serialize(road)
 
@@ -291,9 +315,7 @@ def api_road_detail(request, road_id):
 
     return JsonResponse(out)
 
-# -----------------------
-# NEW: Asset detail dump (dynamic)
-# -----------------------
+@require_http_methods(["GET", "POST"])
 def api_asset_detail(request, asset_id):
     """
     GET /api/asset/<uuid>/?type=<asset_type_key>&table=<db_table>
@@ -301,6 +323,59 @@ def api_asset_detail(request, asset_id):
       - If neither is provided, we fall back to the existing scan (find_asset_record).
     Response stays identical to your current shape.
     """
+
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        type_key = (request.GET.get("type") or "").strip().lower() or None
+        table    = (request.GET.get("table") or "").strip() or None
+
+        kind = None
+        resolved_type_key = type_key
+        Model = None
+        obj = None
+
+        if type_key:
+            # model_from_type_or_table -> (kind, type_key, Model)
+            kind, resolved_type_key, Model = model_from_type_or_table(type_key, None)
+            if Model is None:
+                return JsonResponse({"error": "Unknown type"}, status=400)
+            try:
+                obj = Model.objects.get(id=asset_id)
+            except Model.DoesNotExist:
+                raise Http404("Asset not found")
+        elif table:
+            kind, resolved_type_key, Model = model_from_type_or_table(None, table)
+            if Model is None:
+                return JsonResponse({"error": "Unknown table"}, status=400)
+            try:
+                obj = Model.objects.get(id=asset_id)
+            except Model.DoesNotExist:
+                raise Http404("Asset not found")
+        else:
+            # find_asset_record -> (type_key, kind, instance)
+            resolved_type_key, kind, obj = find_asset_record(asset_id)
+            if obj is None:
+                raise Http404("Asset not found")
+            Model = obj.__class__
+
+        allowed = {f.name for f in Model._meta.fields if f.editable}
+        updated_fields = []
+
+        for key, val in payload.items():
+            if key not in allowed:
+                continue
+            setattr(obj, key, val)
+            updated_fields.append(key)
+
+        if updated_fields:
+            obj.save(update_fields=updated_fields)
+
+        return JsonResponse({"ok": True, "updated": updated_fields})
+        
     type_param  = (request.GET.get("type") or "").strip().lower()
     table_param = (request.GET.get("table") or "").strip()
 

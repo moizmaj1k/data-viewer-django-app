@@ -6288,6 +6288,20 @@ body.drawer-open #map {
           padding-right: 28px;
         }
 
+        /* Cleaning Status dropdown colour hints */
+        .cleaning-status-select.status--pending {
+          background-color: #fefce8; /* soft yellow */
+          border-color: #facc15;
+        }
+        .cleaning-status-select.status--good {
+          background-color: #dcfce7; /* light green */
+          border-color: #16a34a;
+        }
+        .cleaning-status-select.status--bad {
+          background-color: #fee2e2; /* light red */
+          border-color: #f97316;
+        }
+
         .edit-field input.field-coord-dirty {
           background: #fef2f2;
           border-color: #b91c1c;
@@ -6389,6 +6403,48 @@ body.drawer-open #map {
         }
         .toggle-switch input:checked + .toggle-slider::before {
           transform: translateX(16px);
+        }
+                /* Divider before cleaning status section */
+        .edit-cleaning-divider {
+          border: none;
+          border-top: 1px solid #e5e7eb;
+          margin: 12px 0 10px;
+        }
+
+        /* Cleaning status row: dropdown + button side by side */
+        .edit-cleaning-row {
+          display: flex;
+          align-items: flex-end;
+          gap: 12px;
+          flex-wrap: nowrap;      /* force same row unless really tiny */
+          margin-top: 4px;
+        }
+
+        .edit-cleaning-row .edit-field--cleaning-status {
+          flex: 1 1 auto;          /* take remaining width */
+          margin-bottom: 0;
+        }
+
+        /* Primary "Push Changes" button */
+        .edit-push-btn {
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: none;
+          background: #2563eb;
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 0.875rem;
+          cursor: pointer;
+          white-space: nowrap;
+          box-shadow: 0 1px 2px rgba(15,23,42,0.12);
+        }
+        .edit-push-btn:hover {
+          background: #1d4ed8;
+        }
+        .edit-push-btn:disabled {
+          opacity: 0.6;
+          cursor: default;
+          box-shadow: none;
         }
 
       `;
@@ -6496,20 +6552,35 @@ body.drawer-open #map {
     };
 
     function parseCleaningStatus(remarks) {
-      const raw = (remarks == null ? '' : String(remarks)).trim();
-      if (!raw.startsWith('{{')) {
-        return { status: 'pending' };
+      // raw DB string
+      const raw = remarks == null ? '' : String(remarks);
+      const trimmed = raw.trimStart();
+    
+      // No leading {{...}} block → default pending, full text editable
+      if (!trimmed.startsWith('{{')) {
+        return { status: 'pending', text: raw };
       }
-      const endIdx = raw.indexOf('}}');
+    
+      const endIdx = trimmed.indexOf('}}');
       if (endIdx === -1) {
-        return { status: 'pending' };
+        return { status: 'pending', text: raw };
       }
-      const block = raw.slice(2, endIdx).trim();
+    
+      const block = trimmed.slice(2, endIdx).trim();
       const match = block.match(/status\s*:\s*(pending|good|bad)/i);
-      if (!match) {
-        return { status: 'pending' };
-      }
-      return { status: match[1].toLowerCase() };
+    
+      const after = trimmed.slice(endIdx + 2);
+      // strip a single run of whitespace between block and text
+      const afterStripped = after.replace(/^\s*/, '');
+    
+      // restore original leading whitespace from before the {{
+      const leadingLen = raw.length - trimmed.length;
+      const leading = raw.slice(0, leadingLen);
+    
+      const text = leading + afterStripped;
+      const status = match ? match[1].toLowerCase() : 'pending';
+    
+      return { status, text };
     }
 
     function makeStatusChip(statusKey) {
@@ -6624,7 +6695,7 @@ body.drawer-open #map {
       const inputsByKey = {};
       const labelsByKey = {};
       const dirtyKeys = new Set();
-
+      
       // Build kvPairs from record (label + value) while respecting SKIP
       const kvPairs = {};
       Object.entries(record || {}).forEach(([key, value]) => {
@@ -6632,9 +6703,20 @@ body.drawer-open #map {
         const niceLabel = key
           .replace(/_/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase());
-        kvPairs[key] = { label: niceLabel, value };
-        original[key] = value == null ? '' : String(value);
+      
+        let displayValue = value;
+      
+        // For remarks, strip out the {{status:*}} block from what the user edits
+        if (key === 'remarks') {
+          const parsed = parseCleaningStatus(value);
+          displayValue = parsed.text ?? value;
+        }
+      
+        kvPairs[key] = { label: niceLabel, value: displayValue };
+        original[key] = displayValue == null ? '' : String(displayValue);
       });
+          
+    
 
       // Build edit fields
       Object.entries(kvPairs).forEach(([key, { label, value }]) => {
@@ -6719,6 +6801,80 @@ body.drawer-open #map {
           control.addEventListener('change', dirtyHandler);
         }
       });
+
+      // --- Cleaning Status section & Push Changes button ---
+
+      // Derive initial cleaning status from the ORIGINAL remarks
+      const initialRemarksRaw = (record && record.remarks) || '';
+      const { status: initialCleaningStatus } = parseCleaningStatus(initialRemarksRaw);
+
+      // Divider line
+      const divider = document.createElement('hr');
+      divider.className = 'edit-cleaning-divider';
+      grid.appendChild(divider);
+
+      // Row that holds dropdown + button
+      const statusRow = document.createElement('div');
+      statusRow.className = 'edit-cleaning-row';
+
+      // Cleaning Status field
+      const statusField = document.createElement('div');
+      statusField.className = 'edit-field edit-field--cleaning-status';
+
+      const statusLabel = document.createElement('label');
+      statusLabel.textContent = 'Cleaning Status';
+      statusField.appendChild(statusLabel);
+      labelsByKey.__cleaning_status = statusLabel;
+
+      const statusSelect = document.createElement('select');
+      statusSelect.className = 'edit-select cleaning-status-select';
+
+      ['pending', 'good', 'bad'].forEach((key) => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        const cfg = CLEANING_STATUS_MAP[key] || { label: key };
+        opt.textContent = cfg.label;
+        statusSelect.appendChild(opt);
+      });
+
+      statusSelect.value = initialCleaningStatus || 'pending';
+      statusField.appendChild(statusSelect);
+
+      // Track in our editor maps
+      inputsByKey.__cleaning_status = statusSelect;
+      original.__cleaning_status = initialCleaningStatus || 'pending';
+
+      function syncStatusSelectClass() {
+        statusSelect.classList.remove(
+          'status--pending',
+          'status--good',
+          'status--bad'
+        );
+        const v = statusSelect.value || 'pending';
+        statusSelect.classList.add(`status--${v}`);
+      }
+      syncStatusSelectClass();
+
+      statusSelect.addEventListener('change', () => {
+        syncStatusSelectClass();
+        updateDirtyState('__cleaning_status');
+      });
+
+      statusRow.appendChild(statusField);
+
+      // "Push Changes" primary button
+      const pushBtn = document.createElement('button');
+      pushBtn.type = 'button';
+      pushBtn.className = 'edit-push-btn';
+      pushBtn.textContent = 'Push Changes';
+
+      // We'll wire this up to the update API in the next step.
+      // For now, just expose it so other code can attach a handler.
+      root.__pushChangesButton = pushBtn;
+
+      statusRow.appendChild(pushBtn);
+
+      grid.appendChild(statusRow);
 
       // Compare against original values using getControlValue()
       function updateDirtyState(key) {

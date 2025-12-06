@@ -1855,6 +1855,53 @@
         .toggle-switch input:checked + .toggle-slider::before {
           transform: translateX(16px);
         }
+                /* Divider before cleaning status section */
+        .edit-cleaning-divider {
+          border: none;
+          border-top: 1px solid #e5e7eb;
+          margin: 12px 0 10px;
+        }
+
+        /* Cleaning status row: dropdown + button side by side */
+        .edit-cleaning-row {
+          display: flex;
+          align-items: flex-end;
+          gap: 12px;
+          flex-wrap: nowrap;      /* keep them on the same row */
+          margin-top: 4px;
+        }
+
+        .edit-cleaning-row .edit-field--cleaning-status {
+          flex: 1 1 auto;          /* status select grows */
+          margin-bottom: 0;
+        }
+
+        /* Make sure the button does NOT stretch / wrap */
+        .edit-cleaning-row .edit-push-btn {
+          flex: 0 0 auto;
+        }
+
+        /* Primary "Push Changes" button */
+        .edit-push-btn {
+          padding: 8px 16px;
+          border-radius: 4px;      /* less rounded */
+          border: none;
+          background: #2563eb;
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 0.875rem;
+          cursor: pointer;
+          white-space: nowrap;
+          box-shadow: 0 1px 2px rgba(15,23,42,0.12);
+        }
+        .edit-push-btn:hover {
+          background: #1d4ed8;
+        }
+        .edit-push-btn:disabled {
+          opacity: 0.6;
+          cursor: default;
+          box-shadow: none;
+        }
 
       `;
       document.head.appendChild(css);
@@ -1961,20 +2008,35 @@
     };
 
     function parseCleaningStatus(remarks) {
-      const raw = (remarks == null ? '' : String(remarks)).trim();
-      if (!raw.startsWith('{{')) {
-        return { status: 'pending' };
+      // raw DB string
+      const raw = remarks == null ? '' : String(remarks);
+      const trimmed = raw.trimStart();
+    
+      // No leading {{...}} block → default pending, full text editable
+      if (!trimmed.startsWith('{{')) {
+        return { status: 'pending', text: raw };
       }
-      const endIdx = raw.indexOf('}}');
+    
+      const endIdx = trimmed.indexOf('}}');
       if (endIdx === -1) {
-        return { status: 'pending' };
+        return { status: 'pending', text: raw };
       }
-      const block = raw.slice(2, endIdx).trim();
+    
+      const block = trimmed.slice(2, endIdx).trim();
       const match = block.match(/status\s*:\s*(pending|good|bad)/i);
-      if (!match) {
-        return { status: 'pending' };
-      }
-      return { status: match[1].toLowerCase() };
+    
+      const after = trimmed.slice(endIdx + 2);
+      // strip a single run of whitespace between block and text
+      const afterStripped = after.replace(/^\s*/, '');
+    
+      // restore original leading whitespace from before the {{
+      const leadingLen = raw.length - trimmed.length;
+      const leading = raw.slice(0, leadingLen);
+    
+      const text = leading + afterStripped;
+      const status = match ? match[1].toLowerCase() : 'pending';
+    
+      return { status, text };
     }
 
     function makeStatusChip(statusKey) {
@@ -1987,7 +2049,10 @@
 
     function revertActiveEditorGeom() {
       const ed = ACTIVE_EDITOR;
+      // If there is no active editor or nothing is actually dirty anymore,
+      // do not revert geometry – this lets *saved* positions become the new baseline.
       if (!ed || !ed.geomBindings) return;
+      if (!ed.dirtyKeys || ed.dirtyKeys.size === 0) return;
 
       const { geomBindings, inputsByKey, labelsByKey, dirtyKeys } = ed;
 
@@ -2045,6 +2110,10 @@
           }
         }
       }
+      // Ensure the Push Changes button is disabled if nothing is dirty any more
+      if (ed.root && typeof ed.root.__syncPushButton === 'function') {
+        ed.root.__syncPushButton();
+      }
     }
 
     // --- View/Edit section builder (generic) -------------------------------
@@ -2073,6 +2142,18 @@
       const viewTable = objToTable(record, extraSkip);
       viewTable.classList.add('kv-view');
 
+      // Map "raw key" -> <td> cell so we can update the View table
+      // after a successful save without refetching from the backend.
+      const viewCellsByKey = {};
+      [...viewTable.querySelectorAll('tr')].forEach((tr) => {
+        const th = tr.querySelector('th');
+        const td = tr.querySelector('td');
+        if (!th || !td) return;
+        const key = th.textContent.trim();
+        if (!key) return;
+        viewCellsByKey[key] = td;
+      });
+
       // Edit grid
       const grid = document.createElement('div');
       grid.className = 'edit-grid';
@@ -2089,13 +2170,8 @@
       const inputsByKey = {};
       const labelsByKey = {};
       const dirtyKeys = new Set();
-
-      // Derive initial cleaning status from remarks (default: pending)
-      const initialRemarks = (record && record.remarks) || '';
-      const { status: initialCleaningStatus } = parseCleaningStatus(initialRemarks);
-      // pseudo-field used only for UI dirty tracking of the dropdown
-      original.__cleaning_status = initialCleaningStatus;
-
+      const STATUS_KEY = '__cleaning_status';
+      
       // Build kvPairs from record (label + value) while respecting SKIP
       const kvPairs = {};
       Object.entries(record || {}).forEach(([key, value]) => {
@@ -2103,9 +2179,19 @@
         const niceLabel = key
           .replace(/_/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase());
-        kvPairs[key] = { label: niceLabel, value };
-        original[key] = value == null ? '' : String(value);
+      
+        let displayValue = value;
+      
+        // For remarks, strip out the {{status:*}} block from what the user edits
+        if (key === 'remarks') {
+          const parsed = parseCleaningStatus(value);
+          displayValue = parsed.text ?? value;
+        }
+      
+        kvPairs[key] = { label: niceLabel, value: displayValue };
+        original[key] = displayValue == null ? '' : String(displayValue);
       });
+          
     
 
       // Build edit fields
@@ -2192,112 +2278,87 @@
         }
       });
 
-      // Cleaning Status dropdown — tied to "remarks" text via {{status:*}} block
-      const remarksControl = inputsByKey.remarks;
-      if (remarksControl) {
-        const statusField = document.createElement('div');
-        statusField.className = 'edit-field edit-field--cleaning-status';
+      // --- Cleaning Status section & Push Changes button ---
 
-        const statusLabel = document.createElement('label');
-        statusLabel.textContent = 'Cleaning Status';
-        statusField.appendChild(statusLabel);
-        labelsByKey.__cleaning_status = statusLabel;
+      // Derive initial cleaning status from the ORIGINAL remarks
+      const initialRemarksRaw = (record && record.remarks) || '';
+      const { status: initialCleaningStatus } = parseCleaningStatus(initialRemarksRaw);
 
-        const select = document.createElement('select');
-        select.className = 'edit-select cleaning-status-select';
+      // Divider line
+      const divider = document.createElement('hr');
+      divider.className = 'edit-cleaning-divider';
+      grid.appendChild(divider);
 
-        ['pending', 'good', 'bad'].forEach((key) => {
-          const opt = document.createElement('option');
-          opt.value = key;
-          const cfg = CLEANING_STATUS_MAP[key] || { label: key };
-          opt.textContent = cfg.label;
-          select.appendChild(opt);
-        });
+      // Row that holds dropdown + button
+      const statusRow = document.createElement('div');
+      statusRow.className = 'edit-cleaning-row';
 
-        // Initial value from remarks / parseCleaningStatus
-        select.value = initialCleaningStatus || 'pending';
-        statusField.appendChild(select);
+      // Cleaning Status field
+      const statusField = document.createElement('div');
+      statusField.className = 'edit-field edit-field--cleaning-status';
 
-        // Place the Cleaning Status field right before the remarks field
-        const remarksFieldDiv = remarksControl.closest('.edit-field');
-        if (remarksFieldDiv && remarksFieldDiv.parentNode === grid) {
-          grid.insertBefore(statusField, remarksFieldDiv);
-        } else {
-          grid.appendChild(statusField);
-        }
+      const statusLabel = document.createElement('label');
+      statusLabel.textContent = 'Cleaning Status';
+      statusField.appendChild(statusLabel);
+      labelsByKey.__cleaning_status = statusLabel;
 
-        // Hook into the generic editor maps
-        inputsByKey.__cleaning_status = select;
+      const statusSelect = document.createElement('select');
+      statusSelect.className = 'edit-select cleaning-status-select';
 
-        function syncStatusSelectClass() {
-          select.classList.remove(
-            'status--pending',
-            'status--good',
-            'status--bad'
-          );
-          const v = select.value || 'pending';
-          select.classList.add(`status--${v}`);
-        }
-        syncStatusSelectClass();
+      ['pending', 'good', 'bad'].forEach((key) => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        const cfg = CLEANING_STATUS_MAP[key] || { label: key };
+        opt.textContent = cfg.label;
+        statusSelect.appendChild(opt);
+      });
 
-        function rewriteRemarksForStatus(nextStatus) {
-          const control = remarksControl;
-          if (!control) return;
+      statusSelect.value = initialCleaningStatus || 'pending';
+      statusField.appendChild(statusSelect);
 
-          const currentText = control.value || '';
-          const trimmed = currentText.trimStart();
-          const hasBlock =
-            trimmed.startsWith('{{') && trimmed.indexOf('}}') !== -1;
+      // Track in our editor maps
+      inputsByKey.__cleaning_status = statusSelect;
+      original.__cleaning_status = initialCleaningStatus || 'pending';
 
-          // Strip any existing leading {{status:*}} block first
-          let baseText = currentText;
-          if (hasBlock) {
-            const leadingLen = currentText.length - trimmed.length; // preserve leading whitespace
-            const endIdx = trimmed.indexOf('}}');
-            const after = trimmed.slice(endIdx + 2).replace(/^\s*/, '');
-            baseText = currentText.slice(0, leadingLen) + after;
-          }
-
-          if (nextStatus === 'pending') {
-            // Behaviour: "pending" means no explicit {{status:*}} block
-            // - If there was no block, leave remarks as-is.
-            // - If there WAS a block (good/bad), we keep the stripped base text.
-            const newText = hasBlock ? baseText : currentText;
-            if (newText !== control.value) {
-              control.value = newText;
-              updateDirtyState('remarks');
-            }
-            return;
-          }
-
-          const cfg = CLEANING_STATUS_MAP[nextStatus];
-          if (!cfg) return;
-
-          const trimmedBase = baseText.trimStart();
-          const leadingLen = baseText.length - trimmedBase.length;
-          const leading = baseText.slice(0, leadingLen);
-          const block = `{{status:${nextStatus}}}`;
-
-          const newText = trimmedBase
-            ? `${leading}${block} ${trimmedBase}`
-            : `${leading}${block}`;
-
-          if (newText !== control.value) {
-            control.value = newText;
-            updateDirtyState('remarks');
-          }
-        }
-
-        const statusDirtyHandler = () => {
-          syncStatusSelectClass();
-          // Update remarks text with the new status block (if needed)
-          rewriteRemarksForStatus(select.value || 'pending');
-          // Mark the dropdown label dirty when it differs from original
-          updateDirtyState('__cleaning_status');
-        };
-
-        select.addEventListener('change', statusDirtyHandler);
+      function syncStatusSelectClass() {
+        statusSelect.classList.remove(
+          'status--pending',
+          'status--good',
+          'status--bad'
+        );
+        const v = statusSelect.value || 'pending';
+        statusSelect.classList.add(`status--${v}`);
       }
+      syncStatusSelectClass();
+
+      statusSelect.addEventListener('change', () => {
+        syncStatusSelectClass();
+        updateDirtyState('__cleaning_status');
+      });
+
+      statusRow.appendChild(statusField);
+
+      // "Push Changes" primary button
+      const pushBtn = document.createElement('button');
+      pushBtn.type = 'button';
+      pushBtn.className = 'edit-push-btn';
+      pushBtn.textContent = 'Push Changes';
+      pushBtn.disabled = true; // default: disabled until something is dirty
+
+      // Helper to enable/disable based on dirtyKeys
+      function syncPushButton() {
+        pushBtn.disabled = dirtyKeys.size === 0;
+      }
+
+      // Expose so outer helpers (e.g., revertActiveEditorGeom) can call it
+      root.__syncPushButton = syncPushButton;
+
+      // expose for debugging if you still want it
+      root.__pushChangesButton = pushBtn;
+
+      statusRow.appendChild(pushBtn);
+
+      grid.appendChild(statusRow);
 
       // Compare against original values using getControlValue()
       function updateDirtyState(key) {
@@ -2317,6 +2378,10 @@
         } else {
           dirtyKeys.delete(key);
           label.classList.remove('field-label-dirty');
+        }
+        // keep the Push Changes button in sync
+        if (typeof root.__syncPushButton === 'function') {
+          root.__syncPushButton();
         }
       }
 
@@ -2453,6 +2518,7 @@
         root,
         toggle: { btnView, btnEdit },
         viewTable,
+        viewCellsByKey,
         grid,
         inputsByKey,
         labelsByKey,
@@ -2512,6 +2578,163 @@
 
       // initial mode
       setMode(EDIT_MODE || 'view');
+
+      // --- Wire up "Push Changes" to POST to Django and update local state ---
+      if (root.__pushChangesButton) {
+        const pushBtn = root.__pushChangesButton;
+        let saveInFlight = false;
+
+        pushBtn.addEventListener('click', async () => {
+          const ed = ACTIVE_EDITOR;
+          if (!ed || ed.root !== root) return;
+          if (saveInFlight) return;
+
+          const dirtyKeysArr = [...ed.dirtyKeys].filter(k => k !== '__cleaning_status');
+          const statusCtrl = ed.inputsByKey.__cleaning_status;
+
+          // If nothing is dirty and we have no status control, nothing to do
+          if (!dirtyKeysArr.length && !statusCtrl) return;
+
+          const payload = {};
+
+          // Normal dirty fields
+          dirtyKeysArr.forEach((key) => {
+            const ctrl = ed.inputsByKey[key];
+            if (!ctrl) return;
+            payload[key] = getControlValue(ctrl);
+          });
+
+          // Cleaning status + remarks block
+          if (statusCtrl) {
+            const statusVal = getControlValue(statusCtrl) || 'pending';
+            const remarksCtrl = ed.inputsByKey.remarks;
+            const remarksUserText = remarksCtrl ? (remarksCtrl.value || '') : (ed.record.remarks || '');
+            payload.remarks = `{{status:${statusVal}}} ${remarksUserText}`.trim();
+          }
+
+          if (!Object.keys(payload).length) return;
+
+          let url = '';
+          if (kind === 'road') {
+            url = `/api/road/${encodeURIComponent(id)}/`;
+          } else {
+            const t = (record.type || '').toString().toLowerCase();
+            const qs = t ? `?type=${encodeURIComponent(t)}` : '';
+            url = `/api/asset/${encodeURIComponent(id)}/${qs}`;
+          }
+
+          saveInFlight = true;
+          pushBtn.disabled = true;
+
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+              console.error('Save failed', await res.text());
+              return;
+            }
+            const data = await res.json();
+            const updated = Array.isArray(data.updated) && data.updated.length
+              ? data.updated
+              : Object.keys(payload);
+
+            // Update local "record", original values, dirty flags and the view table
+            updated.forEach((key) => {
+              let newVal = (key === 'remarks')
+                ? payload.remarks
+                : payload[key];
+
+              ed.record[key] = newVal;
+
+              const ctrl = ed.inputsByKey[key];
+              const lbl  = ed.labelsByKey[key];
+              const td   = ed.viewCellsByKey[key];
+
+              let curStr;
+
+              if (key === 'remarks') {
+                // For the UI we show only the text part, and keep that as baseline
+                const parsed = parseCleaningStatus(newVal);
+                curStr = parsed.text || '';
+                ed.original[key] = curStr;
+              } else {
+                curStr = newVal == null ? '' : String(newVal);
+                ed.original[key] = curStr;
+              }
+
+              ed.dirtyKeys.delete(key);
+
+              if (lbl) lbl.classList.remove('field-label-dirty');
+              if (td)  td.textContent = curStr;
+            });
+            // --- NEW: mark cleaning status as clean & update the title chip ---
+            if (statusCtrl) {
+              const statusVal = getControlValue(statusCtrl) || 'pending';
+
+              // 1) Update local "original" baseline so the dropdown is no longer dirty
+              ed.original.__cleaning_status = statusVal;
+              ed.dirtyKeys.delete('__cleaning_status');
+
+              const statusLbl = ed.labelsByKey.__cleaning_status;
+              if (statusLbl) statusLbl.classList.remove('field-label-dirty');
+
+              // 2) Update the status chip in the drawer title immediately
+              if (drawerTitle) {
+                const chip = drawerTitle.querySelector('.status-chip');
+                if (chip) {
+                  const cfg = CLEANING_STATUS_MAP[statusVal] || CLEANING_STATUS_MAP.pending;
+                  chip.className = `status-chip status-chip--${statusVal}`;
+                  chip.textContent = `${cfg.icon} ${cfg.label}`;
+                }
+              }
+
+              // 3) Make sure the Push Changes button reflects the clean state
+              if (typeof ed.root.__syncPushButton === 'function') {
+                ed.root.__syncPushButton();
+              }
+            }
+
+            // For coords, treat the current geometry as the new "initial" baseline
+            if (ed.geomBindings) {
+              ['point', 'start', 'end'].forEach((gKey) => {
+                const b = ed.geomBindings[gKey];
+                if (!b || !b.feature) return;
+                const g = b.feature.getGeometry && b.feature.getGeometry();
+                if (!g || !g.getCoordinates) return;
+                b.initialCoord = g.getCoordinates().slice();
+
+                // remove dirty styling for coord inputs
+                if (b.latKey && ed.inputsByKey[b.latKey]) {
+                  const inp = ed.inputsByKey[b.latKey];
+                  const lbl = ed.labelsByKey[b.latKey];
+                  inp.classList.remove('field-coord-dirty');
+                  lbl && lbl.classList.remove('field-label-dirty');
+                  ed.dirtyKeys.delete(b.latKey);
+                }
+                if (b.lonKey && ed.inputsByKey[b.lonKey]) {
+                  const inp = ed.inputsByKey[b.lonKey];
+                  const lbl = ed.labelsByKey[b.lonKey];
+                  inp.classList.remove('field-coord-dirty');
+                  lbl && lbl.classList.remove('field-label-dirty');
+                  ed.dirtyKeys.delete(b.lonKey);
+                }
+              });
+            }
+            // Make sure button reflects that nothing is dirty any more
+            if (typeof ed.root.__syncPushButton === 'function') {
+              ed.root.__syncPushButton();
+            }
+          } catch (err) {
+            console.error('Save error', err);
+          } finally {
+            saveInFlight = false;
+            pushBtn.disabled = false;
+          }
+        });
+      }
 
       return root;
     }

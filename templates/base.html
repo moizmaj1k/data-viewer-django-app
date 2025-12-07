@@ -3,7 +3,8 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>🗃️ DCA Dashboard</title>
+  <link rel="shortcut icon" href="{% static 'favicon/layer-head.png' %}" type="image/png">
+  <title>DCA Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="{% static 'main.css' %}">
   {% block head_extra %}{% endblock %}
@@ -18,7 +19,10 @@
     </script>
   {% endif %}
   <header class="topbar">
-    <div class="brand">🗃️ Data Collection App - Dashboard</div>
+    <div class="brand">
+      <img src="{% static 'favicon/layer-head.png' %}" class="brand-icon" alt="Logo">
+      Data Collection App - Dashboard
+    </div>
     <nav class="toolbar">
       {% block toolbar %}{% endblock %}
     </nav>

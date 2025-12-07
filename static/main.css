@@ -17,6 +17,18 @@
 html, body { height: 100%; margin: 0; }
 body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* space between icon and text */
+}
+
+.brand-icon {
+  width: 40px;   /* adjust as needed */
+  height: 40px;
+  object-fit: contain;
+}
+
 .topbar {
   height: var(--topbar-h);
   display: flex;

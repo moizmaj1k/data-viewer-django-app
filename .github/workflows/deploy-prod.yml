@@ -1,0 +1,24 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main   # deploy whenever main is updated
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (for logging only)
+        uses: actions/checkout@v4
+
+      - name: Deploy to droplet via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            cd /opt/rams-app/data-viewer-django-app
+            ./deploy.sh main

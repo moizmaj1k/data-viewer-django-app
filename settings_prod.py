@@ -7,11 +7,16 @@ DEBUG = False
 ALLOWED_HOSTS = [
     "142.93.219.70",  # your droplet IP
     "localhost",
+    "datacollection.pavron.com.pk",
+    "127.0.0.1",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://142.93.219.70",
     "http://localhost",
+    "http://datacollection.pavron.com.pk",
+    "https://datacollection.pavron.com.pk",
+    "http://127.0.0.1",
 ]
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "change-me-in-env")

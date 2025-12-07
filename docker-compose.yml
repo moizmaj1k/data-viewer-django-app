@@ -21,10 +21,14 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
       # later: "443:443" when you add HTTPS
     volumes:
-      # main nginx config (the one you showed me earlier)
+      # main nginx config
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+      # mount Let's Encrypt certs from host into container (read-only)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
 
       # shared static volume
       - static_volume:/app/staticfiles:ro

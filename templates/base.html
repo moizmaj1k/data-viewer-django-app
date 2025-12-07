@@ -10,11 +10,13 @@
 </head>
 <body>
   <!-- Browser reload (no template tags needed) -->
-  <script
-    src="{% static 'django-browser-reload/reload-listener.js' %}"
-    data-workers-url="/__reload__/reload-worker.js"
-    defer>
-  </script>
+  {% if debug %}
+    <script
+      src="{% static 'django-browser-reload/reload-listener.js' %}"
+      data-workers-url="/__reload__/reload-worker.js"
+      defer>
+    </script>
+  {% endif %}
   <header class="topbar">
     <div class="brand">🗃️ Data Collection App - Dashboard</div>
     <nav class="toolbar">

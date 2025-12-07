@@ -24,7 +24,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret")
 DEBUG = True
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    "142.93.219.70",
+    "localhost",
+    '127.0.0.1',
+    "datacollection.pavron.com.pk",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "http://142.93.219.70",
+    "http://localhost",
+    "http://datacollection.pavron.com.pk",
+    "https://datacollection.pavron.com.pk",
+]
 
 
 # Application definition

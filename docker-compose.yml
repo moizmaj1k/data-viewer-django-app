@@ -12,6 +12,12 @@ services:
       - static_volume:/app/staticfiles
     expose:
       - "8000"
+    command: >
+      gunicorn rams.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 3
+      --limit-request-line 16384
+      --limit-request-field_size 16384
     # no ports directly; nginx will expose 80/443
     depends_on: []
 

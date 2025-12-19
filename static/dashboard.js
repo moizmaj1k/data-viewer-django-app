@@ -56,6 +56,7 @@
   const roadsPanel    = roadsSelect.querySelector(".ms-panel");
   const roadsSearch   = document.getElementById("roads-search");
   const roadsList     = document.getElementById("roads-list");
+  const roadsTotal    = document.getElementById("roads-total");
   const roadsSelectAllBtn = document.getElementById("roads-select-all");
   const roadsClearAllBtn  = document.getElementById("roads-clear-all");
 
@@ -1325,6 +1326,7 @@
       // Be tolerant to field naming differences
       const id        = r.id ?? r.pk ?? r.uuid ?? r.ID ?? "";
       const name      = r.name ?? r.road_name ?? r.title ?? "(Unnamed road)";
+      const roadLength = r.road_length ?? r.roadLength ?? r.length ?? r.road_len ?? null;
       const start_lat = r.start_lat ?? r.startLat ?? r.start_latitude ?? r.start_latitude_deg ?? null;
       const start_lon = r.start_lon ?? r.startLon ?? r.start_longitude ?? r.start_longitude_deg ?? null;
       const end_lat   = r.end_lat ?? r.endLat ?? r.end_latitude ?? r.end_latitude_deg ?? null;
@@ -1332,6 +1334,7 @@
       return `
        <label class="check" data-name="${(r.name||'').toLowerCase()}">
         <input type="checkbox" value="${id}"
+               data-road-length="${roadLength ?? ''}"
                data-start-lat="${start_lat ?? ''}"
                data-start-lon="${start_lon ?? ''}"
                data-end-lat="${end_lat ?? ''}"
@@ -1365,6 +1368,24 @@
   function getSelectedRoadCheckboxes() {
     return [...roadsList.querySelectorAll('input[type="checkbox"]:checked')];
   }
+  function formatRoadKm(value) {
+    if (!Number.isFinite(value)) return '';
+    const rounded = Math.round(value * 1000) / 1000;
+    return rounded.toFixed(3).replace(/\.?0+$/, '');
+  }
+  function updateRoadsTotalLabel() {
+    if (!roadsTotal) return;
+    const total = getSelectedRoadCheckboxes().reduce((sum, cb) => {
+      const val = parseFloat(cb.dataset.roadLength);
+      return sum + (Number.isFinite(val) ? val : 0);
+    }, 0);
+    if (!total) {
+      roadsTotal.textContent = '';
+      return;
+    }
+    const formatted = formatRoadKm(total);
+    roadsTotal.textContent = formatted ? `(${formatted} Km)` : '';
+  }
   function updateRoadsTriggerLabel() {
     const count = getSelectedRoadCheckboxes().length;
     const label = roadsSelect.querySelector('.ms-label');
@@ -1377,6 +1398,7 @@
       countSpan.textContent = `(${count})`;
       countSpan.hidden = false;
     }
+    updateRoadsTotalLabel();
   }
 
   async function loadRoadsByDistrict(districtCode) {

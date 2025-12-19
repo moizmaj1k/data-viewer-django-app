@@ -156,7 +156,7 @@ def api_roads(request):
         qs = qs.filter(district=district)
 
     qs = qs.annotate(id_str=Cast("id", output_field=CharField()))
-    roads = list(qs.values("id_str", "name", "start_lat", "start_lon", "end_lat", "end_lon"))
+    roads = list(qs.values("id_str", "name", "start_lat", "start_lon", "end_lat", "end_lon", "road_length"))
 
     payload = [
         {
@@ -166,6 +166,7 @@ def api_roads(request):
             "start_lon": r.get("start_lon"),
             "end_lat": r.get("end_lat"),
             "end_lon": r.get("end_lon"),
+            "road_length": r.get("road_length"),
         }
         for r in roads
     ]

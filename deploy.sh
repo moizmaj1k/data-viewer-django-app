@@ -21,6 +21,6 @@ docker compose down
 docker compose up -d --build
 
 echo "[deploy] Collecting static..."
-docker compose exec -T web python manage.py collectstatic --noinput
+docker compose exec web python manage.py collectstatic --noinput
 
 echo "[deploy] Done."

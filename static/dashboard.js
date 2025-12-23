@@ -92,14 +92,14 @@
     openTableBtn.type = 'button';
     openTableBtn.id = 'btn-open-selection-table';
     openTableBtn.className = 'btn btn-outline btn-selection-table';
-    openTableBtn.textContent = 'Open selection table';
+    openTableBtn.textContent = 'Selection table';
     openTableBtn.disabled = true;
 
     const exportBtn = document.createElement('button');
     exportBtn.type = 'button';
     exportBtn.id = 'btn-export-selection';
     exportBtn.className = 'btn btn-outline btn-selection-table';
-    exportBtn.textContent = 'Export selection CSV';
+    exportBtn.textContent = 'Export xlsx';
     exportBtn.disabled = true;
 
     wrapper.appendChild(exportBtn);
@@ -112,7 +112,7 @@
     cb.id = 'stick-selection';
 
     const span = document.createElement('span');
-    span.textContent = 'Stick current selection';
+    span.textContent = 'Stick selection';
 
     label.appendChild(cb);
     label.appendChild(span);

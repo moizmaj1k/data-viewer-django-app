@@ -627,7 +627,7 @@ body.drawer-open #map {
 .filters-actions .btn-selection-table {
   padding: 5px 10px !important;
   font-size: 11px !important;
-  min-height: 28px;
+  min-height: 24px;
 }
 
 /* .filters-panel.open {

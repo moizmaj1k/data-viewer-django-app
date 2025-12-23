@@ -81,11 +81,29 @@
   const filtersActions = document.querySelector('.filters-actions');
   let stickSelectionCheckbox = null;
   let selectionTableButton = null;
+  let exportSelectionButton = null;
+  let selectionSnapshotLatest = null;
 
   if (filtersActions && btnReset) {
     const wrapper = document.createElement('div');
     wrapper.className = 'stick-selection-group';
 
+    const openTableBtn = document.createElement('button');
+    openTableBtn.type = 'button';
+    openTableBtn.id = 'btn-open-selection-table';
+    openTableBtn.className = 'btn btn-outline btn-selection-table';
+    openTableBtn.textContent = 'Open selection table';
+    openTableBtn.disabled = true;
+
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.id = 'btn-export-selection';
+    exportBtn.className = 'btn btn-outline btn-selection-table';
+    exportBtn.textContent = 'Export selection CSV';
+    exportBtn.disabled = true;
+
+    wrapper.appendChild(exportBtn);
+    wrapper.appendChild(openTableBtn);
     const label = document.createElement('label');
     label.className = 'stick-selection';
 
@@ -98,22 +116,14 @@
 
     label.appendChild(cb);
     label.appendChild(span);
-
-    const openTableBtn = document.createElement('button');
-    openTableBtn.type = 'button';
-    openTableBtn.id = 'btn-open-selection-table';
-    openTableBtn.className = 'btn btn-outline btn-selection-table';
-    openTableBtn.textContent = 'Open selection table';
-    openTableBtn.disabled = true;
-
     wrapper.appendChild(label);
-    wrapper.appendChild(openTableBtn);
 
     // Insert immediately after the Reset button so it appears beside the checkbox group
     filtersActions.insertBefore(wrapper, btnReset.nextSibling);
 
     stickSelectionCheckbox = cb;
     selectionTableButton = openTableBtn;
+    exportSelectionButton = exportBtn;
   }
 
   function isStickSelectionOn() {
@@ -1630,6 +1640,15 @@
         if (snapRes.ok) {
           snapshotPayload = await snapRes.json();
           window.SelectionTable.setSnapshot(snapshotPayload);
+          selectionSnapshotLatest = snapshotPayload;
+          if (selectionTableButton) {
+            selectionTableButton.disabled = false;
+            selectionTableButton.setAttribute('aria-disabled', 'false');
+          }
+          if (exportSelectionButton) {
+            exportSelectionButton.disabled = false;
+            exportSelectionButton.setAttribute('aria-disabled', 'false');
+          }
         } else {
           console.warn("[selection-table] snapshot request failed:", snapRes.status);
         }
@@ -1640,13 +1659,32 @@
       if (!snapshotPayload) {
         // Fallback to the lighter client-built snapshot
         if (selectedRoadsPayload.length) {
-          window.SelectionTable.setSelection({
+          const fallbackSnapshot = {
             district: { code: district || '', name: districtNameByCode(district) },
             roads: selectedRoadsPayload,
             assets: assetsPayload
-          });
+          };
+          window.SelectionTable.setSelection(fallbackSnapshot);
+          selectionSnapshotLatest = fallbackSnapshot;
+          if (selectionTableButton) {
+            selectionTableButton.disabled = false;
+            selectionTableButton.setAttribute('aria-disabled', 'false');
+          }
+          if (exportSelectionButton) {
+            exportSelectionButton.disabled = false;
+            exportSelectionButton.setAttribute('aria-disabled', 'false');
+          }
         } else {
           window.SelectionTable.clearSelection();
+          selectionSnapshotLatest = null;
+          if (selectionTableButton) {
+            selectionTableButton.disabled = true;
+            selectionTableButton.setAttribute('aria-disabled', 'true');
+          }
+          if (exportSelectionButton) {
+            exportSelectionButton.disabled = true;
+            exportSelectionButton.setAttribute('aria-disabled', 'true');
+          }
         }
       }
     }
@@ -1674,6 +1712,15 @@
 
     if (window.SelectionTable) {
       window.SelectionTable.clearSelection();
+    }
+    selectionSnapshotLatest = null;
+    if (selectionTableButton) {
+      selectionTableButton.disabled = true;
+      selectionTableButton.setAttribute('aria-disabled', 'true');
+    }
+    if (exportSelectionButton) {
+      exportSelectionButton.disabled = true;
+      exportSelectionButton.setAttribute('aria-disabled', 'true');
     }
 
     // Only clear map and recenter when "stick" is OFF
@@ -3579,11 +3626,11 @@
 
     // --- Brief crosshair/highlight at a coordinate ---
     let crosshairLayer = null;
-    function ensureCrosshairLayer() {
-      if (crosshairLayer) return crosshairLayer;
-      const source = new ol.source.Vector();
-      crosshairLayer = new ol.layer.Vector({ source, zIndex: 80 });
-      map.addLayer(crosshairLayer);
+  function ensureCrosshairLayer() {
+    if (crosshairLayer) return crosshairLayer;
+    const source = new ol.source.Vector();
+    crosshairLayer = new ol.layer.Vector({ source, zIndex: 80 });
+    map.addLayer(crosshairLayer);
       crosshairLayer.__source = source;
       return crosshairLayer;
     }
@@ -3636,7 +3683,205 @@
           clearInterval(interval);
           features.forEach(f => source.removeFeature(f));
         }
-      }, 250);
+        }, 250);
+    }
+
+    function gatherColumns(rows) {
+      const keys = [];
+      (rows || []).forEach(r => {
+        Object.keys(r || {}).forEach(k => {
+          if (!keys.includes(k)) keys.push(k);
+        });
+      });
+      return keys;
+    }
+
+    function escapeXml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+    }
+
+    function columnLetter(idx) {
+      let s = '';
+      let n = idx + 1;
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        s = String.fromCharCode(65 + rem) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    }
+
+    function makeSheetXml(columns, rows) {
+      const colsXml = columns.map((c, i) =>
+        `<col min="${i+1}" max="${i+1}" width="${Math.max(String(c).length + 4, 12)}" customWidth="1"/>`
+      ).join('');
+
+      const headerCells = columns.map((c, i) =>
+        `<c r="${columnLetter(i)}1" t="inlineStr" s="1"><is><t>${escapeXml(String(c).toUpperCase())}</t></is></c>`
+      ).join('');
+
+      const bodyRows = rows.map((row, rIdx) => {
+        const cells = columns.map((c, cIdx) => {
+          const val = row[c];
+          const cellRef = `${columnLetter(cIdx)}${rIdx + 2}`;
+          return `<c r="${cellRef}" t="inlineStr"><is><t>${escapeXml(val == null ? '' : String(val))}</t></is></c>`;
+        }).join('');
+        return `<row r="${rIdx + 2}">${cells}</row>`;
+      }).join('');
+
+      const lastRef = columns.length ? `${columnLetter(columns.length - 1)}${rows.length + 1}` : 'A1';
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:${lastRef}"/>
+  <sheetViews><sheetView workbookViewId="0"/></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols>${colsXml}</cols>
+  <sheetData>
+    <row r="1">${headerCells}</row>
+    ${bodyRows}
+  </sheetData>
+</worksheet>`;
+    }
+
+    function buildXlsxFromSnapshot(snapshot) {
+      if (!snapshot || typeof JSZip === 'undefined') return null;
+      const zip = new JSZip();
+      const sheets = [];
+      if (Array.isArray(snapshot.roads) && snapshot.roads.length) {
+        sheets.push({ name: 'Roads', rows: snapshot.roads });
+      }
+      Object.entries(snapshot.assets || {}).forEach(([typeKey, rows]) => {
+        const rowsArr = Array.isArray(rows) ? rows : [];
+        if (!rowsArr.length) return;
+        const safeName = (typeKey || 'Asset').toString().replace(/[:\\/*?\\[\\]]/g, '').slice(0, 31) || 'Asset';
+        sheets.push({ name: safeName, rows: rowsArr });
+      });
+      if (!sheets.length) return null;
+
+      const contentTypes = [`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+${sheets.map((_, idx) => `  <Override PartName="/xl/worksheets/sheet${idx+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('\\n')}
+</Types>`];
+
+      const relsRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+      const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheets.map((_, idx) => `  <Relationship Id="rId${idx+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${idx+1}.xml"/>`).join('\\n')}
+</Relationships>`;
+
+      const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+${sheets.map((s, idx) => `    <sheet name="${escapeXml(s.name)}" sheetId="${idx+1}" r:id="rId${idx+1}"/>`).join('\\n')}
+  </sheets>
+</workbook>`;
+
+      const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><color theme="1"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color theme="1"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/>
+  </cellXfs>
+</styleSheet>`;
+
+      zip.file('[Content_Types].xml', contentTypes.join('\\n'));
+      zip.folder('_rels').file('.rels', relsRels);
+      const xl = zip.folder('xl');
+      xl.file('workbook.xml', workbookXml);
+      xl.file('styles.xml', stylesXml);
+      xl.folder('_rels').file('workbook.xml.rels', wbRels);
+
+      sheets.forEach((s, idx) => {
+        const cols = gatherColumns(s.rows);
+        const xml = makeSheetXml(cols, s.rows);
+        xl.folder('worksheets').file(`sheet${idx+1}.xml`, xml);
+      });
+
+      return zip;
+    }
+
+    if (exportSelectionButton) {
+      exportSelectionButton.addEventListener('click', () => {
+        if (!selectionSnapshotLatest) return;
+        const snap = selectionSnapshotLatest;
+        const districtName = snap.district?.name || snap.district?.code || 'All';
+        const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').replace(/[\\s\\/]/g,'-');
+        const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+        const slug = (districtName || 'All').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'all';
+        const filenameBase = `selection-${slug}-${tz}-${stamp}`;
+
+        const xlsxZip = buildXlsxFromSnapshot(snap);
+        if (xlsxZip) {
+          xlsxZip.generateAsync({type:'blob'}).then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${filenameBase}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 150);
+          }).catch(err => console.warn('xlsx export failed', err));
+          return;
+        }
+
+        // Fallback: single CSV with sections
+        const parts = [];
+        function toCsv(cols, rows) {
+          const header = cols.map(c => `"${String(c).toUpperCase().replace(/"/g,'""')}"`).join(',');
+          const body = rows.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g,'""')}"`).join(','));
+          return [header, ...body].join('\\n');
+        }
+        if (Array.isArray(snap.roads) && snap.roads.length) {
+          const cols = gatherColumns(snap.roads);
+          parts.push('# Roads');
+          parts.push(toCsv(cols, snap.roads));
+          parts.push('');
+        }
+        const assets = snap.assets || {};
+        Object.entries(assets).forEach(([typeKey, rows]) => {
+          const rowsArr = Array.isArray(rows) ? rows : [];
+          if (!rowsArr.length) return;
+          const cols = gatherColumns(rowsArr);
+          parts.push(`# ${typeKey} assets`);
+          parts.push(toCsv(cols, rowsArr));
+          parts.push('');
+        });
+        const csv = parts.join('\\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filenameBase}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 150);
+      });
     }
 
     window.addEventListener('message', (evt) => {

@@ -24,6 +24,12 @@
     ['710TOG','Tor Ghar'], ['810UPD','Upper Dir'],
   ];
 
+  function districtNameByCode(code) {
+    if (!code) return '';
+    const found = DISTRICT_CHOICES.find(([c]) => c === code);
+    return found ? found[1] : '';
+  }
+
   // Asset keys that exist in DB (tables)
   const ASSET_KEYS = [
     // point-like
@@ -74,8 +80,12 @@
   // --- "Stick current selection" checkbox, shown beside Reset ---
   const filtersActions = document.querySelector('.filters-actions');
   let stickSelectionCheckbox = null;
+  let selectionTableButton = null;
 
   if (filtersActions && btnReset) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'stick-selection-group';
+
     const label = document.createElement('label');
     label.className = 'stick-selection';
 
@@ -89,10 +99,21 @@
     label.appendChild(cb);
     label.appendChild(span);
 
-    // Insert immediately after the Reset button so it appears "beside" it
-    filtersActions.insertBefore(label, btnReset.nextSibling);
+    const openTableBtn = document.createElement('button');
+    openTableBtn.type = 'button';
+    openTableBtn.id = 'btn-open-selection-table';
+    openTableBtn.className = 'btn btn-outline btn-selection-table';
+    openTableBtn.textContent = 'Open selection table';
+    openTableBtn.disabled = true;
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(openTableBtn);
+
+    // Insert immediately after the Reset button so it appears beside the checkbox group
+    filtersActions.insertBefore(wrapper, btnReset.nextSibling);
 
     stickSelectionCheckbox = cb;
+    selectionTableButton = openTableBtn;
   }
 
   function isStickSelectionOn() {
@@ -1368,6 +1389,11 @@
   function getSelectedRoadCheckboxes() {
     return [...roadsList.querySelectorAll('input[type="checkbox"]:checked')];
   }
+  function getRoadNameFromCheckbox(cb) {
+    const labelEl = cb.closest('label.check');
+    const span = labelEl ? labelEl.querySelector('span') : null;
+    return span ? span.textContent.trim() : '';
+  }
   function formatRoadKm(value) {
     if (!Number.isFinite(value)) return '';
     const rounded = Math.round(value * 1000) / 1000;
@@ -1481,6 +1507,26 @@
     const district = districtSel.value;
     const roadCbs  = getSelectedRoadCheckboxes();
     const roadIds  = roadCbs.map(cb => cb.value);
+    const roadNameById = new Map();
+    const selectedRoadsPayload = roadCbs.map(cb => {
+      const sLat = parseFloat(cb.dataset.startLat), sLon = parseFloat(cb.dataset.startLon);
+      const eLat = parseFloat(cb.dataset.endLat),   eLon = parseFloat(cb.dataset.endLon);
+      const lengthKm = parseFloat(cb.dataset.roadLength);
+      const roadName = getRoadNameFromCheckbox(cb);
+      const record = {
+        id: cb.value,
+        name: roadName,
+        length_km: Number.isFinite(lengthKm) ? lengthKm : null,
+        start_lat: Number.isFinite(sLat) ? sLat : null,
+        start_lon: Number.isFinite(sLon) ? sLon : null,
+        end_lat: Number.isFinite(eLat) ? eLat : null,
+        end_lon: Number.isFinite(eLon) ? eLon : null,
+        district: district || ''
+      };
+      roadNameById.set(String(cb.value), roadName);
+      return record;
+    });
+    let assetsPayload = [];
 
     // draw roads (start/end): green/red — attach road_id and visible labels 'S'/'E'
     roadCbs.forEach(cb => {
@@ -1525,11 +1571,16 @@
       url.searchParams.set("types", typesParam);
       const res = await fetch(url);
       const data = await res.json();
+      const assetsData = data.assets || [];
+      assetsPayload = assetsData.map(a => ({
+        ...a,
+        road_name: a.road_id ? (roadNameById.get(String(a.road_id)) || '') : '',
+      }));
 
       // Expect: assets: array of records:
       // { kind:'point', lon, lat, label }
       // { kind:'line', start_lon, start_lat, end_lon, end_lat, label }
-      (data.assets || []).forEach(a => {
+      assetsData.forEach(a => {
         if (a.kind === 'point') {
           const l = (a.label || '').toLowerCase();
           const short =
@@ -1568,6 +1619,38 @@
 
     }
 
+    if (window.SelectionTable) {
+      let snapshotPayload = null;
+      try {
+        const snapUrl = new URL(location.origin + "/api/selection/snapshot/");
+        if (district) snapUrl.searchParams.set("district", district);
+        if (roadIds.length) snapUrl.searchParams.set("road_ids", roadIds.join(','));
+        snapUrl.searchParams.set("types", typesParam);
+        const snapRes = await fetch(snapUrl);
+        if (snapRes.ok) {
+          snapshotPayload = await snapRes.json();
+          window.SelectionTable.setSnapshot(snapshotPayload);
+        } else {
+          console.warn("[selection-table] snapshot request failed:", snapRes.status);
+        }
+      } catch (err) {
+        console.warn("[selection-table] snapshot fetch error:", err);
+      }
+
+      if (!snapshotPayload) {
+        // Fallback to the lighter client-built snapshot
+        if (selectedRoadsPayload.length) {
+          window.SelectionTable.setSelection({
+            district: { code: district || '', name: districtNameByCode(district) },
+            roads: selectedRoadsPayload,
+            assets: assetsPayload
+          });
+        } else {
+          window.SelectionTable.clearSelection();
+        }
+      }
+    }
+
     fitAll();
     // Close panels for a clean feel
     roadsPanel.setAttribute("aria-hidden","true");
@@ -1588,6 +1671,10 @@
     assetsList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
 
     const stickOn = isStickSelectionOn();
+
+    if (window.SelectionTable) {
+      window.SelectionTable.clearSelection();
+    }
 
     // Only clear map and recenter when "stick" is OFF
     if (!stickOn) {
@@ -1615,6 +1702,9 @@
     populateDistricts();
     renderAssetsList();
     setAssetsUIByMode('none');
+    if (window.SelectionTable && typeof window.SelectionTable.init === 'function') {
+      window.SelectionTable.init();
+    }
 
     // --- Custom layers section (Add Layer button + chips container) ----------
     // We build this HTML here so layers.js can just query:
@@ -3264,28 +3354,15 @@
       return any;
     }
 
-    if (map.__clickBound) return;
-    map.__clickBound = true;
-
-    // Clicking the map: feature picking & behavior
-    map.on('singleclick', async (evt) => {
-      const pixel = evt.pixel;
-      const feat = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => (l === pointsLayer || l === linesLayer) });
+    async function handleFeatureSelection(feat) {
       if (!feat) {
-        // click on empty map -> close drawer and reset highlight
         if (drawer) closeDrawer();
-
-        // If user was in Edit mode and dragged markers but didn't save,
-        // snap them back to their original geometry.
         revertActiveEditorGeom();
         stopEditHighlight();
-
         pointsSource.getFeatures().forEach(styleByFeatureReset);
         linesSource.getFeatures().forEach(styleByFeatureReset);
-        clearSelectedCopies(); // also remove mirrored "always-visible" points
+        clearSelectedCopies();
         clearPointer();
-
-        // reset editor + modify
         ACTIVE_EDITOR = null;
         EDIT_MODE = 'view';
         editableFeatures.clear();
@@ -3296,36 +3373,27 @@
       const ftype = feat.get('feature_type');
       const roadId = feat.get('road_id');
       const assetId = feat.get('id');
-      const assetKind = feat.get('asset_kind'); // 'point'|'line'
 
       try {
-        // 1) Road endpoints: show road details (with counts & pics)
         if (ftype === 'road_endpoint' && roadId) {
           const hasAny = highlightRoadById(roadId);
           if (!hasAny) {
-            await fetchRoadAssetsOnce(roadId); // keeps your current highlight logic intact
+            await fetchRoadAssetsOnce(roadId);
             highlightRoadById(roadId);
           }
-
-          // Get counts and the road object (which holds road-level pics)
           const res = await fetch(`/api/road/${roadId}/?include=counts`);
           const payload = await res.json();
 
           const panel = document.createElement('div');
-
-          // 1) Asset counts chart
           const chart = makeCountsChart(payload.counts || {});
           panel.appendChild(chart);
 
-          // 2) Road images
           const pics = normalizePics(payload.road);
-          if (pics.length) panel.appendChild(makeGallery(pics, '🖼️ Road Images'));
+          if (pics.length) panel.appendChild(makeGallery(pics, 'dY-мЛ,? Road Images'));
 
-          // 3) Metadata (you asked to put the toggle RIGHT BELOW this)
           const metaSection = makeMetadataSection(payload.road);
           panel.appendChild(metaSection);
 
-          // 4) View/Edit section (generic) – placed right below metadata
           const geomBindings = detectGeomBindingsForRoad(payload.road, roadId);
           const veSection = buildViewEditSection('road', payload.road, {
             extraSkip: ['name'],
@@ -3342,16 +3410,13 @@
           });
           decorateWithPointerArrow(feat);
           return;
-
         }
 
-        // 2) Asset points or line endpoints: show ONLY asset details, not whole road
         if ((ftype === 'asset' || ftype === 'asset_endpoint') && assetId) {
           const assetType = feat.get('asset_type') || null;
           const payload = await fetchAsset(assetId, assetType);
           const asset = payload.asset || {};
 
-          // Keep your road highlight behavior as-is
           if (asset.road_id) {
             const hasAny = highlightRoadById(asset.road_id);
             if (!hasAny) {
@@ -3361,15 +3426,12 @@
           }
           const panel = document.createElement('div');
 
-          // 1) Images (collapsible, open)
           const pics = normalizePics(asset);
-          panel.appendChild(makeGallery(pics, '🖼️ Images'));
+          panel.appendChild(makeGallery(pics, 'dY-мЛ,? Images'));
 
-          // 2) Metadata (collapsible, closed by default)
           const metaSection = makeMetadataSection(asset);
           panel.appendChild(metaSection);
 
-          // 3) View/Edit section (generic) – directly below metadata
           const geomBindings = detectGeomBindingsForAsset(asset);
           const veSection = buildViewEditSection('asset', asset, {
             geomBindings,
@@ -3383,12 +3445,9 @@
             district: asset.district ?? asset.district_code ?? asset.district_name,
             status: assetStatus.status
           });
-          // If the user clicked a point-like thing, decorate it directly
           if (feat.get('kind') === 'point' || feat.get('kind') === 'line-endpoint') {
             decorateWithPointerArrow(feat);
           } else {
-            // Rare case: if the user clicked a line body but the drawer opened for the asset,
-            // try to target one endpoint (S/E) of that asset for the arrow.
             const endpoints = pointsSource.getFeatures().filter(f =>
               f.get('kind') === 'line-endpoint' && String(f.get('id')) === String(assetId)
             );
@@ -3399,6 +3458,197 @@
       } catch (err) {
         console.error(err);
       }
+    }
+
+    if (map.__clickBound) return;
+    map.__clickBound = true;
+
+    // Clicking the map: feature picking & behavior
+    map.on('singleclick', async (evt) => {
+      const pixel = evt.pixel;
+      const feat = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => (l === pointsLayer || l === linesLayer) });
+      await handleFeatureSelection(feat);
     });
+
+    function extractLonLatFromRow(row) {
+      if (!row) return null;
+      const lonKeys = ['lon', 'lng', 'longitude', 'start_lon'];
+      const latKeys = ['lat', 'latitude', 'start_lat'];
+      let lon = null, lat = null;
+      for (const k of lonKeys) {
+        const v = row[k];
+        if (v !== undefined && v !== null && v !== '') { lon = parseFloat(v); break; }
+      }
+      for (const k of latKeys) {
+        const v = row[k];
+        if (v !== undefined && v !== null && v !== '') { lat = parseFloat(v); break; }
+      }
+      if (Number.isFinite(lon) && Number.isFinite(lat)) return { lon, lat };
+      return null;
+    }
+
+    function findFeatureById(id) {
+      if (!id) return null;
+      const sid = String(id);
+      let feat = pointsSource.getFeatures().find(f => String(f.get('id') || '') === sid);
+      if (feat) return feat;
+      feat = linesSource.getFeatures().find(f => String(f.get('id') || '') === sid);
+      return feat || null;
+    }
+
+    function findFeatureByRoadId(roadId, { preferRoadEndpoint = false } = {}) {
+      if (!roadId) return null;
+      const sid = String(roadId);
+      const pointMatches = pointsSource.getFeatures().filter(f => String(f.get('road_id') || '') === sid);
+      if (preferRoadEndpoint) {
+        const roadEndpoint = pointMatches.find(f => f.get('feature_type') === 'road_endpoint');
+        if (roadEndpoint) return roadEndpoint;
+      }
+      if (pointMatches.length) return pointMatches[0];
+      const lineMatch = linesSource.getFeatures().find(f => String(f.get('road_id') || '') === sid);
+      return lineMatch || null;
+    }
+
+    function findNearestFeatureByCoord(lon, lat, maxMeters = 200) {
+      const target = ol.proj.fromLonLat([lon, lat]);
+      let best = null;
+      let bestDist = Infinity;
+      const candidates = pointsSource.getFeatures().concat(linesSource.getFeatures());
+      candidates.forEach(f => {
+        const geom = f.getGeometry?.();
+        if (!geom) return;
+        let coord = null;
+        if (geom.getType && geom.getType() === 'Point') coord = geom.getCoordinates();
+        if (geom.getType && geom.getType() === 'LineString') {
+          const ex = geom.getExtent();
+          coord = ol.extent.getCenter(ex);
+        }
+        if (!coord) return;
+        const dx = coord[0] - target[0];
+        const dy = coord[1] - target[1];
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = f;
+        }
+      });
+      if (best && Number.isFinite(bestDist)) {
+        const meters = ol.proj.getPointResolution(ol.proj.get('EPSG:3857'), 1, target) * bestDist;
+        if (meters <= maxMeters) return best;
+      }
+      return null;
+    }
+
+  async function focusMapFromTable(payload) {
+      if (!payload || !payload.row) return;
+      const row = payload.row;
+      const isRoadRow = (payload.sheetKey || '').startsWith('roads') || (!row.type && row.start_lat !== undefined);
+
+      // Prefer explicit coordinates from the row (point assets or line start)
+      const coord = extractLonLatFromRow(row);
+      if (coord) {
+        const projected = ol.proj.fromLonLat([coord.lon, coord.lat]);
+        const view = map.getView();
+        const targetZoom = Math.max(view.getZoom() || 12, 18.5);
+        view.animate({ center: projected, zoom: targetZoom, duration: 250 });
+        flashCrosshair(projected);
+        return;
+      }
+
+      // Fallback: try to center on a known feature by id/road_id
+      let feat = null;
+      if (row.id) {
+        feat = findFeatureById(row.id);
+      }
+      if (!feat && row.road_id) {
+        feat = findFeatureByRoadId(row.road_id, { preferRoadEndpoint: isRoadRow });
+      }
+      if (feat) {
+        const geom = feat.getGeometry?.();
+        if (geom) {
+          const center = geom.getType && geom.getType() === 'Point'
+            ? geom.getCoordinates()
+            : ol.extent.getCenter(geom.getExtent());
+          const view = map.getView();
+          const targetZoom = Math.max(view.getZoom() || 12, 18.5);
+          view.animate({ center, zoom: targetZoom, duration: 250 });
+          flashCrosshair(center);
+        }
+      }
+    }
+
+    // --- Brief crosshair/highlight at a coordinate ---
+    let crosshairLayer = null;
+    function ensureCrosshairLayer() {
+      if (crosshairLayer) return crosshairLayer;
+      const source = new ol.source.Vector();
+      crosshairLayer = new ol.layer.Vector({ source, zIndex: 80 });
+      map.addLayer(crosshairLayer);
+      crosshairLayer.__source = source;
+      return crosshairLayer;
+    }
+
+    function flashCrosshair(coord) {
+      if (!coord) return;
+      const layer = ensureCrosshairLayer();
+      const source = layer.__source;
+      const size = 14;
+
+      // Crosshair box corners
+      const box = new ol.geom.Polygon([[
+        [coord[0]-size, coord[1]-size],
+        [coord[0]+size, coord[1]-size],
+        [coord[0]+size, coord[1]+size],
+        [coord[0]-size, coord[1]+size],
+        [coord[0]-size, coord[1]-size],
+      ]]);
+
+      // Rays extending outward
+      const rays = [
+        new ol.geom.LineString([[coord[0]-size*1.6, coord[1]], [coord[0]-size*0.6, coord[1]]]),
+        new ol.geom.LineString([[coord[0]+size*0.6, coord[1]], [coord[0]+size*1.6, coord[1]]]),
+        new ol.geom.LineString([[coord[0], coord[1]-size*1.6], [coord[0], coord[1]-size*0.6]]),
+        new ol.geom.LineString([[coord[0], coord[1]+size*0.6], [coord[0], coord[1]+size*1.6]])
+      ];
+
+      const features = [
+        new ol.Feature({ geometry: box }),
+        ...rays.map(g => new ol.Feature({ geometry: g }))
+      ];
+
+      const redStyle = new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: '#dc2626', width: 2 })
+      });
+
+      features.forEach(f => f.setStyle(redStyle));
+      features.forEach(f => source.addFeature(f));
+
+      // Blink twice then remove
+      let visible = true;
+      let count = 0;
+      const interval = setInterval(() => {
+        visible = !visible;
+        features.forEach(f => f.setStyle(visible ? redStyle : new ol.style.Style({
+          stroke: new ol.style.Stroke({ color: 'rgba(0,0,0,0)' })
+        })));
+        count += 1;
+        if (count >= 6) {
+          clearInterval(interval);
+          features.forEach(f => source.removeFeature(f));
+        }
+      }, 250);
+    }
+
+    window.addEventListener('message', (evt) => {
+      const data = evt.data || {};
+      if (data.type === 'selection-table:focus') {
+        focusMapFromTable(data.payload);
+      }
+    });
+
+    // Direct bridge so the table window can call opener.centerOnSelectionRow(row)
+    window.centerOnSelectionRow = function(row, sheetKey) {
+      focusMapFromTable({ row, sheetKey });
+    };
   })();
 })();

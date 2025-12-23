@@ -240,6 +240,88 @@ def api_assets(request):
 
     return JsonResponse({'assets': assets_out})
 
+
+def _district_name(code: str | None) -> str:
+    if not code:
+        return ""
+    return dict(DISTRICT_CHOICES).get(code, "")
+
+
+def api_selection_snapshot(request):
+    """
+    GET /api/selection/snapshot/?district=CODE&road_ids=a,b&types=all|none|key1,key2
+    Returns a full-field snapshot for the requested roads and assets so the
+    tabular window can show every column.
+    """
+    district = (request.GET.get("district") or "").strip()
+    road_ids_param = [r.strip() for r in (request.GET.get("road_ids") or "").split(",") if r.strip()]
+    types_param = (request.GET.get("types") or "none").strip().lower()
+
+    roads_qs = BackEndRoad.objects.all()
+    if district:
+        roads_qs = roads_qs.filter(district=district)
+    if road_ids_param:
+        roads_qs = roads_qs.filter(id__in=road_ids_param)
+
+    roads_serialized = [safe_serialize(r) for r in roads_qs]
+    road_ids = [str(r.id) for r in roads_qs]
+    # If the filter produced no rows but road_ids were explicitly provided, keep them for asset lookups
+    if not road_ids and road_ids_param:
+        road_ids = road_ids_param
+
+    selected_point_types: list[str] = []
+    selected_line_types: list[str] = []
+    if types_param == "all":
+        selected_point_types = list(POINT_ASSETS.keys())
+        selected_line_types = list(LINE_ASSETS.keys())
+    elif types_param != "none":
+        keys = [k.strip() for k in types_param.split(",") if k.strip()]
+        selected_point_types = [k for k in keys if k in POINT_ASSETS]
+        selected_line_types = [k for k in keys if k in LINE_ASSETS]
+
+    assets_out: dict[str, list[dict]] = {}
+    if road_ids and (selected_point_types or selected_line_types):
+        for k in selected_point_types:
+            meta = POINT_ASSETS[k]
+            Model = meta["model"]
+            latf, lonf = meta["lat"], meta["lon"]
+            rows = []
+            for obj in Model.objects.filter(road_id__in=road_ids):
+                rec = safe_serialize(obj)
+                rec.update({
+                    "kind": "point",
+                    "type": k,
+                    "lat": getattr(obj, latf, None),
+                    "lon": getattr(obj, lonf, None),
+                })
+                rows.append(rec)
+            assets_out[k] = rows
+
+        for k in selected_line_types:
+            meta = LINE_ASSETS[k]
+            Model = meta["model"]
+            sLa, sLo = meta["start_lat"], meta["start_lon"]
+            eLa, eLo = meta["end_lat"], meta["end_lon"]
+            rows = []
+            for obj in Model.objects.filter(road_id__in=road_ids):
+                rec = safe_serialize(obj)
+                rec.update({
+                    "kind": "line",
+                    "type": k,
+                    "start_lat": getattr(obj, sLa, None),
+                    "start_lon": getattr(obj, sLo, None),
+                    "end_lat": getattr(obj, eLa, None),
+                    "end_lon": getattr(obj, eLo, None),
+                })
+                rows.append(rec)
+            assets_out[k] = rows
+
+    return JsonResponse({
+        "district": {"code": district, "name": _district_name(district)},
+        "roads": roads_serialized,
+        "assets": assets_out,
+    })
+
 @require_http_methods(["GET", "POST"])
 def api_road_detail(request, road_id):
     """

@@ -1,6 +1,7 @@
 import os
 from django.http import JsonResponse, Http404
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 import json
 from django.shortcuts import render
 from django.db.models import CharField
@@ -172,15 +173,35 @@ def api_roads(request):
     ]
     return JsonResponse({"roads": payload})
 
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def api_assets(request):
     """
-    GET /api/assets/?road_ids=a,b,c&types=all|none|key1,key2
-    Returns: { assets: [ ... ] }
-    Each asset now includes: id, road_id, kind, geometry, label (type key).
+    POST /api/assets/ with JSON:
+      { "road_ids": ["a","b"], "types": "all"|["bridge","culvert"]|"none" }
+    Also accepts the old GET querystring for backward compatibility.
+    Returns: { assets: [ ... ] } where each asset includes id, road_id, kind, geometry, label (type key).
     """
-    road_ids = (request.GET.get('road_ids') or '').split(',')
-    road_ids = [r.strip() for r in road_ids if r.strip()]
-    types_param = (request.GET.get('types') or 'none').strip().lower()
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        road_ids_raw = payload.get("road_ids") or []
+        types_raw = payload.get("types", "none")
+    else:
+        road_ids_raw = (request.GET.get('road_ids') or '')
+        types_raw = (request.GET.get('types') or 'none')
+
+    if isinstance(road_ids_raw, (list, tuple)):
+        road_ids = [str(r).strip() for r in road_ids_raw if str(r).strip()]
+    else:
+        road_ids = [r.strip() for r in str(road_ids_raw).split(',') if r.strip()]
+
+    if isinstance(types_raw, (list, tuple)):
+        types_param = ','.join([str(k).strip().lower() for k in types_raw if str(k).strip()]) or 'none'
+    else:
+        types_param = str(types_raw or 'none').strip().lower()
 
     if not road_ids or types_param == 'none':
         return JsonResponse({'assets': []})
@@ -247,15 +268,38 @@ def _district_name(code: str | None) -> str:
     return dict(DISTRICT_CHOICES).get(code, "")
 
 
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def api_selection_snapshot(request):
     """
-    GET /api/selection/snapshot/?district=CODE&road_ids=a,b&types=all|none|key1,key2
+    POST /api/selection/snapshot/ with JSON:
+      { "district": "CODE", "road_ids": [...], "types": "all"|"none"|[...] }
+    Also accepts the legacy GET querystring for backward compatibility.
     Returns a full-field snapshot for the requested roads and assets so the
     tabular window can show every column.
     """
-    district = (request.GET.get("district") or "").strip()
-    road_ids_param = [r.strip() for r in (request.GET.get("road_ids") or "").split(",") if r.strip()]
-    types_param = (request.GET.get("types") or "none").strip().lower()
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        district = (payload.get("district") or "").strip()
+        road_ids_raw = payload.get("road_ids") or []
+        types_raw = payload.get("types", "none")
+    else:
+        district = (request.GET.get("district") or "").strip()
+        road_ids_raw = (request.GET.get("road_ids") or "")
+        types_raw = (request.GET.get("types") or "none")
+
+    if isinstance(road_ids_raw, (list, tuple)):
+        road_ids_param = [str(r).strip() for r in road_ids_raw if str(r).strip()]
+    else:
+        road_ids_param = [r.strip() for r in str(road_ids_raw).split(",") if r.strip()]
+
+    if isinstance(types_raw, (list, tuple)):
+        types_param = ','.join([str(k).strip().lower() for k in types_raw if str(k).strip()]) or 'none'
+    else:
+        types_param = str(types_raw or 'none').strip().lower()
 
     roads_qs = BackEndRoad.objects.all()
     if district:

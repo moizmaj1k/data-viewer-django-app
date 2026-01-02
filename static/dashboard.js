@@ -1568,18 +1568,19 @@
 
     // assets
     const mode = getAssetMode();
-    let typesParam = 'none';
-    if (mode === 'all') typesParam = 'all';
-    if (mode === 'custom') {
-      const keys = getSelectedAssetKeys();
-      typesParam = keys.join(',');
-    }
+    const selectedAssetKeys = mode === 'custom' ? getSelectedAssetKeys() : [];
+    const typesPayload = mode === 'custom' ? selectedAssetKeys : mode; // 'all' | 'none' | array of type keys
+    const shouldRequestAssets = roadIds.length && (mode === 'all' || selectedAssetKeys.length);
 
-    if (roadIds.length && typesParam !== 'none') {
-      const url = new URL(location.origin + "/api/assets/");
-      url.searchParams.set("road_ids", roadIds.join(','));
-      url.searchParams.set("types", typesParam);
-      const res = await fetch(url);
+    if (shouldRequestAssets) {
+      const res = await fetch("/api/assets/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          road_ids: roadIds,
+          types: typesPayload,
+        })
+      });
       const data = await res.json();
       const assetsData = data.assets || [];
       assetsPayload = assetsData.map(a => ({
@@ -1632,11 +1633,15 @@
     if (window.SelectionTable) {
       let snapshotPayload = null;
       try {
-        const snapUrl = new URL(location.origin + "/api/selection/snapshot/");
-        if (district) snapUrl.searchParams.set("district", district);
-        if (roadIds.length) snapUrl.searchParams.set("road_ids", roadIds.join(','));
-        snapUrl.searchParams.set("types", typesParam);
-        const snapRes = await fetch(snapUrl);
+        const snapRes = await fetch("/api/selection/snapshot/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            district,
+            road_ids: roadIds,
+            types: typesPayload,
+          })
+        });
         if (snapRes.ok) {
           snapshotPayload = await snapRes.json();
           window.SelectionTable.setSnapshot(snapshotPayload);
@@ -2997,10 +3002,14 @@
 
     async function fetchRoadAssetsOnce(roadId) {
       // pull all asset types for a single road to ensure we can highlight
-      const url = new URL(location.origin + "/api/assets/");
-      url.searchParams.set("road_ids", roadId);
-      url.searchParams.set("types", "all");
-      const res = await fetch(url);
+      const res = await fetch("/api/assets/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          road_ids: [roadId],
+          types: "all",
+        })
+      });
       if (!res.ok) return;
       const data = await res.json();
       (data.assets || []).forEach(a => {
